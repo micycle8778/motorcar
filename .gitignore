@@ -1,0 +1,4 @@
+# clangd shit
+.cache/*
+# build directory
+out/*

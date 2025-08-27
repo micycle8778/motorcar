@@ -12,9 +12,13 @@
   in
   {
     devShells.${system}.default = pkgs.mkShell {
+      # disable default gcc flags
+      NIX_HARDENING_ENABLE = "";
+
       nativeBuildInputs = with pkgs; [
         cmake
         clang-tools
+        gcc
       ];
 
       shellHook = ''

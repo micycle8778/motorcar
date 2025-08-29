@@ -94,16 +94,7 @@ void native_bench(sol::state& lua) {
 
 void cpp_func_lua_mem(sol::state& lua) {
     std::vector<sol::table> vs;
-    for (int idx = 0; idx < NUM_VECS; idx++) {
-        float x = (float)rand() / RAND_MAX;
-        float y = (float)rand() / RAND_MAX;
-
-        auto v = lua.create_table();
-        v["x"] = x;
-        v["y"] = y;
-
-        vs.push_back(v);
-    }
+    vs.reserve(NUM_VECS);
 
     float sum = 0.f;
     auto translate = [&](sol::table& v) {
@@ -116,6 +107,50 @@ void cpp_func_lua_mem(sol::state& lua) {
 
     std::cout << "cpp_func_lua_mem: ";
     bench([&](){
+        for (int idx = 0; idx < NUM_VECS; idx++) {
+            float x = (float)rand() / RAND_MAX;
+            float y = (float)rand() / RAND_MAX;
+
+            auto v = lua.create_table();
+            v["x"] = x;
+            v["y"] = y;
+
+            vs.push_back(v);
+        }
+
+        for (sol::table& v : vs) {
+            translate(v);
+        }
+
+        vs.clear();
+    });
+    lua["sum"] = lua["sum"].get<float>() + sum;
+}
+
+void cpp_func_lua_mem_aot(sol::state& lua) {
+    float sum = 0.f;
+    auto translate = [&](sol::table& v) {
+        v["x"] = v["x"].get<float>() + 2;
+        v["y"] = v["y"].get<float>() + 2;
+
+        sum += v["x"].get<float>();
+        sum += v["y"].get<float>();
+    };
+
+    std::cout << "cpp_func_lua_mem_aot: ";
+    bench([&](){
+        std::vector<sol::table> vs;
+        for (int idx = 0; idx < NUM_VECS; idx++) {
+            float x = (float)rand() / RAND_MAX;
+            float y = (float)rand() / RAND_MAX;
+
+            auto v = lua.create_table();
+            v["x"] = x;
+            v["y"] = y;
+
+            vs.push_back(v);
+        }
+
         for (sol::table& v : vs) {
             translate(v);
         }
@@ -182,6 +217,8 @@ void cpp_glue_lua_all(sol::state& lua) {
         for (sol::table& v : vs) {
             translate(v);
         }
+
+        vs.clear();
     });
 }
 
@@ -238,6 +275,9 @@ int main( int argc, const char* argv[] ) {
     std::cout << std::endl;
 
     repeat([&](){ cpp_func_lua_mem(lua); }, 5);
+    std::cout << std::endl;
+
+    repeat([&](){ cpp_func_lua_mem_aot(lua); }, 5);
     std::cout << std::endl;
 
     repeat([&](){ cpp_mem_lua_func(lua); }, 5);

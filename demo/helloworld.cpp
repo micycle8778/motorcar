@@ -4,9 +4,12 @@
 #include <iostream>
 #include <memory>
 #include <sol/forward.hpp>
+#include <sol/object.hpp>
+#include <sol/unique_usertype_traits.hpp>
+#include <stdexcept>
 #include <vector>
 
-// #define SOL_ALL_SAFETIES_ON 1
+#define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
 
 struct Vec2 {
@@ -16,41 +19,61 @@ struct Vec2 {
     Vec2(float x, float y) : x(x), y(y) {}
 };
 
-/*
+struct invalid_ptr_dereference : std::runtime_error {
+    invalid_ptr_dereference() : std::runtime_error("invalid invalid_ptr dereference") {}
+};
+template <typename T>
+struct invalid_ptr {
+    T* interior;
+    bool valid = true;
 
-local wrapped_metatable = {
-    __index = function(t, key)
-        if t.__is_valid then
-            return t.__interior[key]
-        end
+    [[nodiscard]] constexpr bool is_valid() const { return valid; }
+    void invalidate() { valid = false; }
 
-        return nil
-    end,
+    [[nodiscard]] constexpr T* get() const { 
+        if (!valid) throw invalid_ptr_dereference();
+        return interior;
+    }
+    [[nodiscard]] constexpr T& operator*() const { return *get(); }
+    [[nodiscard]] constexpr T* operator->() const { return get(); }
 
-    -- TODO: passthrough the rest of the metamethods
+    
+};
+
+namespace sol {
+    template <typename T>
+    struct unique_usertype_traits<invalid_ptr<T>> {
+        static auto* get(lua_State*, const auto& ptr) noexcept {
+			return ptr.get();
+		}
+
+		static bool is_null(lua_State*, const auto& ptr) noexcept {
+			return !ptr.is_valid() || ptr.get() == nullptr;
+		}
+    };
 }
 
-local Wrapped = {
-    new = function(interior)
-        -- TODO: check interior is table or userdata
-        return setmetatable({
-            __is_valid = true,
-            __interior = interior,
-        }, wrapped_metatable)
-    end,
+template <typename T>
+void sol_lua_check_access(sol::types<T>, lua_State* L, int index, sol::stack::record& tracking) {
+	sol::optional<invalid_ptr<T>&> maybe_checked = sol::stack::check_get<invalid_ptr<T>&>(L, index, sol::no_panic, tracking);
+	if (!maybe_checked.has_value()) {
+		return;
+	}
+
+	invalid_ptr<T>& checked = *maybe_checked;
+	if (!checked.is_valid()) {
+		// freak out in whatever way is appropriate, here
+		throw std::runtime_error("You dun goofed");
+	}
 }
 
-local boss_pos = nil
-ECS.for_each({ "boss", "position" }, function(_boss, pos)
-    boss_pos = pos -- now i have the boss' position :D
-end)
-
-ECS.remove_entity(ECS.get({ "_entity", "boss" })[0])
-print(boss_pos) -- what now?
-
-*/
-
-#define NUM_VECS 200000
+// number of 2d vectors to translate
+#define NUM_VECS 20000
+// number of times to translate the vectors
+// think of this as the number of ticks run by the engine
+#define INNER_RUNS 1000
+// number of times the benchmark is run
+#define OUTER_RUNS 5
 
 template <typename Func>
 void bench(const Func func) {
@@ -69,11 +92,6 @@ void repeat(const Func func, int times) {
 }
 
 void native_bench(sol::state& lua) {
-    std::vector<Vec2> vs;
-    for (int idx = 0; idx < NUM_VECS; idx++) {
-        vs.push_back(Vec2((float)rand() / RAND_MAX, (float)rand() / RAND_MAX));
-    }
-
     float sum = 0.f;
     auto translate = [&](Vec2& v) {
         v.x += 2;
@@ -85,17 +103,22 @@ void native_bench(sol::state& lua) {
 
     std::cout << "native: ";
     bench([&](){
-        for (Vec2& v : vs) {
-            translate(v);
+        std::vector<Vec2> vs;
+        for (int idx = 0; idx < NUM_VECS; idx++) {
+            vs.push_back(Vec2((float)rand() / RAND_MAX, (float)rand() / RAND_MAX));
         }
+
+        repeat([&]() {
+            for (Vec2& v : vs) {
+                translate(v);
+            }
+        }, INNER_RUNS);
     });
+
     lua["sum"] = lua["sum"].get<float>() + sum;
 }
 
 void cpp_func_lua_mem(sol::state& lua) {
-    std::vector<sol::table> vs;
-    vs.reserve(NUM_VECS);
-
     float sum = 0.f;
     auto translate = [&](sol::table& v) {
         v["x"] = v["x"].get<float>() + 2;
@@ -106,38 +129,6 @@ void cpp_func_lua_mem(sol::state& lua) {
     };
 
     std::cout << "cpp_func_lua_mem: ";
-    bench([&](){
-        for (int idx = 0; idx < NUM_VECS; idx++) {
-            float x = (float)rand() / RAND_MAX;
-            float y = (float)rand() / RAND_MAX;
-
-            auto v = lua.create_table();
-            v["x"] = x;
-            v["y"] = y;
-
-            vs.push_back(v);
-        }
-
-        for (sol::table& v : vs) {
-            translate(v);
-        }
-
-        vs.clear();
-    });
-    lua["sum"] = lua["sum"].get<float>() + sum;
-}
-
-void cpp_func_lua_mem_aot(sol::state& lua) {
-    float sum = 0.f;
-    auto translate = [&](sol::table& v) {
-        v["x"] = v["x"].get<float>() + 2;
-        v["y"] = v["y"].get<float>() + 2;
-
-        sum += v["x"].get<float>();
-        sum += v["y"].get<float>();
-    };
-
-    std::cout << "cpp_func_lua_mem_aot: ";
     bench([&](){
         std::vector<sol::table> vs;
         for (int idx = 0; idx < NUM_VECS; idx++) {
@@ -151,58 +142,79 @@ void cpp_func_lua_mem_aot(sol::state& lua) {
             vs.push_back(v);
         }
 
-        for (sol::table& v : vs) {
-            translate(v);
-        }
+        repeat([&]() {
+            for (sol::table& v : vs) {
+                translate(v);
+            }
+        }, INNER_RUNS);
     });
     lua["sum"] = lua["sum"].get<float>() + sum;
 }
 
 void cpp_mem_lua_func(sol::state& lua) {
-    std::vector<Vec2> vs;
-    for (int idx = 0; idx < NUM_VECS; idx++) {
-        vs.push_back(Vec2((float)rand() / RAND_MAX, (float)rand() / RAND_MAX));
-    }
-
     sol::function translate = lua["translate"];
 
     std::cout << "cpp_mem_lua_func: ";
     bench([&](){
-        for (Vec2& v : vs) {
-            translate(&v);
+        std::vector<Vec2> vs;
+        for (int idx = 0; idx < NUM_VECS; idx++) {
+            vs.push_back(Vec2((float)rand() / RAND_MAX, (float)rand() / RAND_MAX));
         }
+        repeat([&]() {
+            for (Vec2& v : vs) {
+                translate(&v);
+            }
+        }, INNER_RUNS);
     });
 }
 
-void cpp_mem_lua_func_aot(sol::state& lua) {
-    std::vector<Vec2> vs;
-    for (int idx = 0; idx < NUM_VECS; idx++) {
-        vs.push_back(Vec2((float)rand() / RAND_MAX, (float)rand() / RAND_MAX));
-    }
-
-    std::vector<sol::object> lua_ready;
-    for (int idx = 0; idx < NUM_VECS; idx++) {
-        auto& v = vs[idx];
-        lua_ready.push_back(sol::make_object(lua, &v));
-    }
-
+void cpp_mem_lua_func_write_back(sol::state& lua) {
     sol::function translate = lua["translate"];
 
-    std::cout << "cpp_mem_lua_func_aot: ";
+    std::cout << "cpp_mem_lua_func_write_back: ";
     bench([&](){
-        for (sol::object& v : lua_ready) {
-            translate(v);
+        std::vector<Vec2> vs;
+        for (int idx = 0; idx < NUM_VECS; idx++) {
+            vs.push_back(Vec2((float)rand() / RAND_MAX, (float)rand() / RAND_MAX));
         }
+        repeat([&]() {
+            for (Vec2& v : vs) {
+                sol::object obj = sol::make_object(lua, v);
+                translate(obj);
+                v = obj.as<Vec2>();
+            }
+        }, INNER_RUNS);
+    });
+}
+
+void cpp_mem_lua_func_make_object(sol::state& lua) {
+    sol::function translate = lua["translate"];
+
+    std::cout << "cpp_mem_lua_func_make_object: ";
+    bench([&](){
+        std::vector<Vec2> vs;
+        std::vector<sol::object> objs;
+        for (int idx = 0; idx < NUM_VECS; idx++) {
+            vs.push_back(Vec2((float)rand() / RAND_MAX, (float)rand() / RAND_MAX));
+        }
+        for (int idx = 0; idx < NUM_VECS; idx++) {
+            objs.push_back(sol::make_object(lua, &vs[idx]));
+        }
+
+        repeat([&]() {
+            for (sol::object& v : objs) {
+                translate(v);
+            }
+        }, INNER_RUNS);
     });
 }
 
 void cpp_glue_lua_all(sol::state& lua) {
-    std::vector<sol::table> vs;
     sol::function translate = lua["translate"];
-    vs.reserve(NUM_VECS); // we're not measuring the time to expand the vector
 
     std::cout << "cpp_glue_lua_all: ";
     bench([&](){
+        std::vector<sol::table> vs;
         for (int idx = 0; idx < NUM_VECS; idx++) {
             float x = (float)rand() / RAND_MAX;
             float y = (float)rand() / RAND_MAX;
@@ -214,44 +226,23 @@ void cpp_glue_lua_all(sol::state& lua) {
             vs.push_back(v);
         }
 
-        for (sol::table& v : vs) {
-            translate(v);
-        }
-
-        vs.clear();
-    });
-}
-
-void cpp_glue_lua_all_aot(sol::state& lua) {
-    std::vector<sol::table> vs;
-    for (int idx = 0; idx < NUM_VECS; idx++) {
-        float x = (float)rand() / RAND_MAX;
-        float y = (float)rand() / RAND_MAX;
-
-        auto v = lua.create_table();
-        v["x"] = x;
-        v["y"] = y;
-
-        vs.push_back(v);
-    }
-
-    sol::function translate = lua["translate"];
-
-    std::cout << "cpp_glue_lua_all_aot: ";
-    bench([&](){
-        for (sol::table& v : vs) {
-            translate(v);
-        }
+        repeat([&]() {
+            for (sol::table& v : vs) {
+                translate(v);
+            }
+        }, INNER_RUNS);
     });
 }
 
 int main( int argc, const char* argv[] ) {
     sol::state lua;
+    lua.open_libraries(sol::lib::base, sol::lib::package);
     lua.new_usertype<Vec2>("Vec2",
         "x", &Vec2::x,
         "y", &Vec2::y
     );
     lua.script(R"(
+        last_v = nil
         sum = 0
         function translate(v)
             v.x = v.x + 2
@@ -259,8 +250,29 @@ int main( int argc, const char* argv[] ) {
 
             sum = sum + v.x
             sum = sum + v.y
+
+            if last_v ~= nil then
+                print(last_v.x)
+            end
+            if last_v ~= nil then
+                print(last_v.y)
+            end
+
+            last_v = v
         end
     )");
+
+    Vec2 v1(1.0, 1.0);
+    Vec2 v2(2.0, 2.0);
+
+    invalid_ptr<Vec2> ptr(&v1);
+
+    lua["translate"](ptr);
+    lua["last_v"].get<invalid_ptr<Vec2>>().invalidate();
+    std::cout << lua["last_v"].get<invalid_ptr<Vec2>>().is_valid() << std::endl;
+    lua["translate"](v2);
+
+    return 0;
 
     // Vec2 my_vec(1., 2.1);
     // sol::object lua_ready = sol::make_object(lua, &my_vec);
@@ -271,25 +283,22 @@ int main( int argc, const char* argv[] ) {
     //
     // return 0;
 
-    repeat([&](){ native_bench(lua); }, 5);
+    repeat([&](){ native_bench(lua); }, OUTER_RUNS);
     std::cout << std::endl;
 
-    repeat([&](){ cpp_func_lua_mem(lua); }, 5);
+    repeat([&](){ cpp_func_lua_mem(lua); }, OUTER_RUNS);
     std::cout << std::endl;
 
-    repeat([&](){ cpp_func_lua_mem_aot(lua); }, 5);
+    repeat([&](){ cpp_mem_lua_func(lua); }, OUTER_RUNS);
     std::cout << std::endl;
 
-    repeat([&](){ cpp_mem_lua_func(lua); }, 5);
+    repeat([&](){ cpp_mem_lua_func_make_object(lua); }, OUTER_RUNS);
     std::cout << std::endl;
 
-    repeat([&](){ cpp_mem_lua_func_aot(lua); }, 5);
+    repeat([&](){ cpp_mem_lua_func_write_back(lua); }, OUTER_RUNS);
     std::cout << std::endl;
 
-    repeat([&](){ cpp_glue_lua_all(lua); }, 5);
-    std::cout << std::endl;
-
-    repeat([&](){ cpp_glue_lua_all_aot(lua); }, 5);
+    repeat([&](){ cpp_glue_lua_all(lua); }, OUTER_RUNS);
     std::cout << std::endl;
 
     return 0;

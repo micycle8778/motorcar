@@ -19,6 +19,7 @@
         cmake
         clang-tools
         gcc
+        just
       ];
 
       shellHook = ''

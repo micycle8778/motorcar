@@ -4,7 +4,7 @@
 
 #include <engine.h>
 
-int main( int argc, const char* argv[] ) {
+int main() {
     motorcar::Engine("helloworld").run();
     return 0;
 }

@@ -3,3 +3,6 @@
 # build directory
 out/*
 compile_commands.json
+
+.vscode/*
+.vs/*

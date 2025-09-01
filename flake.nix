@@ -20,9 +20,26 @@
         clang-tools
         gcc
         just
+        pkg-config
+      ];
+
+      buildInputs = with pkgs; [
+        # deps for glfw
+        wayland
+        wayland-scanner
+        wayland-protocols
+        libxkbcommon
+        xorg.libX11
+        xorg.libXrandr
+        xorg.libXinerama
+        xorg.libXcursor
+        xorg.libXi
+        xorg.libXext
       ];
 
       shellHook = ''
+        export LD_LIBRARY_PATH=${pkgs.wayland}/lib:$LD_LIBRARY_PATH
+        export LD_LIBRARY_PATH=${pkgs.libxkbcommon}/lib:$LD_LIBRARY_PATH
         export PS1="(nix-shell) $PS1"
       '';
     };

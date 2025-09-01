@@ -35,6 +35,7 @@ bool GraphicsManager::window_should_close() {
 }
 
 void GraphicsManager::draw() {
+    glfwPollEvents();
 }
 
 GraphicsManager::~GraphicsManager() {

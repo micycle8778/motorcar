@@ -1,15 +1,15 @@
-#include <chrono>
 #include <iostream>
 #include <stdexcept>
-#include "engine.h"
 #include "GLFW/glfw3.h"
+#include "engine.h"
 using namespace motorcar;
 
 GraphicsManager::GraphicsManager(
-    const std::string& window_name,
-    int window_width,
-    int window_height
-) {
+        Engine& engine,
+        const std::string& window_name,
+        int window_width,
+        int window_height
+) : engine(engine) {
     if (!glfwInit()) {
         const char* error;
         glfwGetError(&error);
@@ -28,6 +28,8 @@ GraphicsManager::GraphicsManager(
         throw std::runtime_error(std::string(error));
     }
     glfwSetWindowAspectRatio(window, window_width, window_height);
+
+    glfwSetWindowUserPointer(window, &engine);
 }
 
 bool GraphicsManager::window_should_close() {
@@ -35,6 +37,7 @@ bool GraphicsManager::window_should_close() {
 }
 
 void GraphicsManager::draw() {
+    engine.input.clear_key_buffers();
     glfwPollEvents();
 }
 
@@ -43,22 +46,7 @@ GraphicsManager::~GraphicsManager() {
     glfwTerminate();
 }
 
-Engine::Engine(const std::string& name) : graphics_manager(name) {
+Engine::Engine(const std::string& name) : gfx(*this, name), input(*this) {
 }
 
-void Engine::run() {
-    std::chrono::time_point<std::chrono::steady_clock> frame_start;
-    while (!graphics_manager.window_should_close()) {
-        frame_start = std::chrono::steady_clock::now();
 
-        // std::cout << "frame" << std::endl;
-
-        graphics_manager.draw();
-
-        while (true) {
-            auto duration = std::chrono::steady_clock::now() - frame_start;
-            auto micros = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
-            if (micros >= 16667) break;
-        }
-    }
-}

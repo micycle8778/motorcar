@@ -1,8 +1,11 @@
 # clangd shit
 .cache/*
-# build directory
-out/*
 compile_commands.json
 
+# build directory
+out/*
+build/*
+
+# ide shit
 .vscode/*
 .vs/*

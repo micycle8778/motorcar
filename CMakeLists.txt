@@ -48,6 +48,7 @@ FetchContent_MakeAvailable( spdlog )
 ## Declare the engine library
 add_library( motorcar STATIC
     src/engine.cpp
+    "src/input.cpp"
 )
 set_target_properties( motorcar PROPERTIES CXX_STANDARD 20 )
 ## Declare our engine's header path.

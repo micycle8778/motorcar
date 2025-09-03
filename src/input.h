@@ -11,8 +11,8 @@ namespace motorcar {
     struct Key {
         int keycode;
 
-        Key(int glfw_keycode) : keycode(glfw_keycode) {}
-        Key(char c) : keycode(std::toupper(c)) {}
+        constexpr Key(int glfw_keycode) : keycode(glfw_keycode) {}
+        constexpr Key(char c) : keycode(std::toupper(c)) {}
     };
 
     // TODO: mouse input

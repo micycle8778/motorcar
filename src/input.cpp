@@ -30,12 +30,12 @@ void InputManager::clear_key_buffers() {
 	this->keys_released_this_frame.fill(false);
 }
 
-bool InputManager::is_key_held_down(Key k) {
+bool InputManager::is_key_held_down(Key k) const {
 	return glfwGetKey(engine.gfx.window, k.keycode) != GLFW_RELEASE;
 }
-bool InputManager::is_key_pressed_this_frame(Key k){
+bool InputManager::is_key_pressed_this_frame(Key k) const {
 	return this->keys_pressed_this_frame[k.keycode];
 }
-bool InputManager::is_key_released_this_frame(Key k){
+bool InputManager::is_key_released_this_frame(Key k) const {
 	return this->keys_released_this_frame[k.keycode];
 }

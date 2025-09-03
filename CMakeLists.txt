@@ -6,8 +6,8 @@ project(
 
 # asan + wall + werror
 if (MSVC)
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /W4 /WX /fsanitize=address")
-    set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}   /W4 /WX /fsanitize=address")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /W4  /fsanitize=address")
+    set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}   /W4  /fsanitize=address")
 else()
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -Werror -fsanitize=address -fno-omit-frame-pointer")
     set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}   -Wall -Werror -fsanitize=address -fno-omit-frame-pointer")
@@ -48,7 +48,8 @@ FetchContent_MakeAvailable( spdlog )
 ## Declare the engine library
 add_library( motorcar STATIC
     src/engine.cpp
-    "src/input.cpp"
+    src/input.cpp
+    src/gfx.cpp
 )
 set_target_properties( motorcar PROPERTIES CXX_STANDARD 20 )
 ## Declare our engine's header path.

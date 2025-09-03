@@ -1,6 +1,6 @@
-#include <cstdlib>
 #include <iostream>
-#include <vector>
+#include <algorithm>
+#include <ranges>
 
 #include <engine.h>
 
@@ -20,7 +20,8 @@ int main() {
             std::cout << "space released " << release_count << " times." << std::endl;
         }
 
-        if (e.input.is_key_held_down(GLFW_KEY_F3)) {
+        constexpr motorcar::Key k = "f3";
+        if (e.input.is_key_held_down(k)) {
             std::cout << "f3" << std::endl;
         }
     });

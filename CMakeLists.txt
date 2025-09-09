@@ -45,6 +45,25 @@ FetchContent_Declare(
     )
 FetchContent_MakeAvailable( spdlog )
 
+FetchContent_Declare(
+    lua
+    GIT_REPOSITORY https://github.com/walterschell/Lua
+    GIT_TAG v5.4.5
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE
+    )
+set(LUA_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable( lua )
+
+FetchContent_Declare(
+    sol2
+    GIT_REPOSITORY https://github.com/thephd/sol2
+    GIT_TAG develop
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE
+    )
+FetchContent_MakeAvailable( sol2 )
+
 ## Declare the engine library
 add_library( motorcar STATIC
     src/engine.cpp
@@ -58,5 +77,5 @@ target_link_libraries( motorcar PUBLIC glfw )
 
 add_executable( helloworld demo/helloworld.cpp )
 set_target_properties( helloworld PROPERTIES CXX_STANDARD 20 )
-target_link_libraries( helloworld PRIVATE motorcar )
+target_link_libraries( helloworld PRIVATE motorcar lua_static sol2 )
 

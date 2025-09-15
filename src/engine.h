@@ -1,7 +1,8 @@
 #pragma once
 
-#include <chrono>
 #include <string>
+
+#include "GLFW/glfw3.h"
 
 #include "input.h"
 #include "gfx.h"
@@ -10,7 +11,9 @@ namespace motorcar {
     struct Engine {
         GraphicsManager gfx;
         InputManager input;
-        
+
+        double time_simulated_secs = 0.;
+
         Engine(const std::string& game_name);
         
         template <typename Callback>
@@ -22,17 +25,15 @@ namespace motorcar {
 }
 
 void motorcar::Engine::run(auto callback) {
-    std::chrono::time_point<std::chrono::steady_clock> frame_start;
     while (!gfx.window_should_close()) {
-        frame_start = std::chrono::steady_clock::now();
 
-        callback();
-        gfx.draw();
+#define SIMULATION_FREQ 5
 
-        while (true) {
-            auto duration = std::chrono::steady_clock::now() - frame_start;
-            auto micros = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
-            if (micros >= 16667) break;
+        while (glfwGetTime() > time_simulated_secs) {
+            callback();
+            time_simulated_secs += (1. / SIMULATION_FREQ);
         }
+
+        gfx.draw();
     }
 }

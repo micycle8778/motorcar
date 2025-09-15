@@ -8,12 +8,11 @@
 //    (by magic number or file extension)
 // 3. automatically reload resources when changed
 // 4. make available these various resources
-//    (both the parsed and unparsed versions)
 
 namespace motorcar {
     struct Engine;
 
-    class IResourceLoader {
+    class ILoadResources {
     };
 
     class ResourceManager {

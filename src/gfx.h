@@ -13,7 +13,7 @@ namespace motorcar {
         friend class InputManager; // friend :)
         GLFWwindow* window;
         Engine& engine;
-
+        
         public:
             GraphicsManager(
                     Engine& engine, 

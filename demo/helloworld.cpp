@@ -1,3 +1,4 @@
+#include "input.h"
 #include <iostream>
 #include <algorithm>
 #include <ranges>
@@ -10,6 +11,7 @@ int main() {
 
     motorcar::Engine e("helloworld");
     e.run([&]() {
+        std::cout << "update\n";
         if (e.input.is_key_pressed_this_frame('`')) {
             press_count++;
             std::cout << "tilde pressed " << press_count << " times." << std::endl;
@@ -20,8 +22,7 @@ int main() {
             std::cout << "space released " << release_count << " times." << std::endl;
         }
 
-        constexpr motorcar::Key k = "f3";
-        if (e.input.is_key_held_down(k)) {
+        if (e.input.is_key_held_down("f3")) {
             std::cout << "f3" << std::endl;
         }
     });

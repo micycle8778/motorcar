@@ -6,11 +6,15 @@
 
 #include "input.h"
 #include "gfx.h"
+#include "sound.h"
+#include "resources.h"
 
 namespace motorcar {
     struct Engine {
+        ResourceManager resources;
         GraphicsManager gfx;
         InputManager input;
+        SoundManager sound;
 
         double time_simulated_secs = 0.;
 
@@ -30,10 +34,10 @@ void motorcar::Engine::run(auto callback) {
 #define SIMULATION_FREQ 5
 
         while (glfwGetTime() > time_simulated_secs) {
-            callback();
             time_simulated_secs += (1. / SIMULATION_FREQ);
         }
 
+        callback();
         gfx.draw();
     }
 }

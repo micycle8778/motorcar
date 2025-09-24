@@ -40,6 +40,7 @@ namespace motorcar {
     // TODO: input action abstraction
     class InputManager {
         friend class GraphicsManager;
+        friend class Engine;
 
         Engine& engine;
         std::array<bool, GLFW_KEY_LAST + 1> keys_pressed_this_frame;
@@ -57,19 +58,21 @@ namespace motorcar {
 }
 
 namespace motorcar {
-	constexpr bool valid_glfw_keycode(int keycode) {
-		// yoinked from glfwGetKey
-		return !(keycode < GLFW_KEY_SPACE || keycode > GLFW_KEY_LAST);
-	}
+    namespace {
+        constexpr bool valid_glfw_keycode(int keycode) {
+            // yoinked from glfwGetKey
+            return !(keycode < GLFW_KEY_SPACE || keycode > GLFW_KEY_LAST);
+        }
 
-	constexpr bool is_not_whitespace(int c) {
-        return !(c == ' ' || c == '-' || c == '_');
+        constexpr bool is_not_whitespace(int c) {
+            return !(c == ' ' || c == '-' || c == '_');
+        }
+
+        template <typename T>
+        constexpr T ctoupper(T c) {
+            return (c >= 'a' && c <= 'z') ? (c - 'a' + 'A') : c;
+        }
     }
-
-	template <typename T>
-	constexpr T ctoupper(T c) {
-    	return (c >= 'a' && c <= 'z') ? (c - 'a' + 'A') : c;
-	}
 
     constexpr Key Key::key_from_string(std::string_view s) {
         int keycode = -1;

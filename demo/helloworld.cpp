@@ -1,30 +1,35 @@
 #include "input.h"
-#include <iostream>
-#include <algorithm>
-#include <ranges>
+#include "soloud.h"
+#include "soloud_wav.h"
 
 #include <engine.h>
 
 int main() {
+    spdlog::set_level(spdlog::level::trace);
+
     int press_count = 0;
     int release_count = 0;
 
     motorcar::Engine e("helloworld");
     e.run([&]() {
-        std::cout << "update\n";
+        // spdlog::trace("lambda start");
+
         if (e.input.is_key_pressed_this_frame('`')) {
             press_count++;
-            std::cout << "tilde pressed " << press_count << " times." << std::endl;
+            spdlog::debug("tilde pressed {} times", press_count);
         }
 
         if (e.input.is_key_released_this_frame(' ')) {
             release_count++;
-            std::cout << "space released " << release_count << " times." << std::endl;
+            spdlog::debug("space released {} times", release_count);
+            e.sound.play_sound("doo-doo.mp3");
         }
 
         if (e.input.is_key_held_down("f3")) {
-            std::cout << "f3" << std::endl;
+            spdlog::debug("f3");
         }
+
+        // spdlog::trace("lambda end");
     });
 
     return 0;

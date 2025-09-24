@@ -4,15 +4,6 @@ project(
     LANGUAGES CXX C
 )
 
-# asan + wall + werror
-if (MSVC)
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /W4  /fsanitize=address")
-    set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}   /W4  /fsanitize=address")
-else()
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -Werror -fsanitize=address -fno-omit-frame-pointer")
-    set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}   -Wall -Werror -fsanitize=address -fno-omit-frame-pointer")
-endif()
-
 # create compile_commands.json
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -45,19 +36,57 @@ FetchContent_Declare(
     )
 FetchContent_MakeAvailable( spdlog )
 
+# soloud
+FetchContent_Declare(
+  soloud
+  GIT_REPOSITORY https://github.com/micycle8778/soloud
+  GIT_TAG        f8972c168af73a424dafb41e6312eb0ee3d5dd64 
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
+)
+FetchContent_MakeAvailable( soloud )
+## SoLoud doesn't have its own `CMakeLists.txt`, so let's declare a library directly from its sources.
+file(GLOB soloud_sources "${soloud_SOURCE_DIR}/src/audiosource/*/*.c*" "${soloud_SOURCE_DIR}/src/c_api/*.c*" "${soloud_SOURCE_DIR}/src/core/*.c*" "${soloud_SOURCE_DIR}/src/filter/*.c*" "${soloud_SOURCE_DIR}/src/backend/miniaudio/soloud_miniaudio.cpp")
+add_library(soloud ${soloud_sources})
+target_compile_definitions(soloud PRIVATE WITH_MINIAUDIO)
+target_include_directories(soloud PUBLIC "${soloud_SOURCE_DIR}/include")
+if(APPLE)
+    find_library(AudioUnit_LIBRARY AudioUnit)
+    find_library(CoreAudio_LIBRARY CoreAudio)
+    target_link_libraries(soloud INTERFACE ${AudioUnit_LIBRARY} ${CoreAudio_LIBRARY})
+    target_compile_definitions(soloud PRIVATE MA_NO_RUNTIME_LINKING)
+endif()
+if(WIN32)
+    target_compile_definitions( soloud PRIVATE MA_NO_JACK )
+endif()
+
 ## Declare the engine library
 add_library( motorcar STATIC
     src/engine.cpp
     src/input.cpp
     src/gfx.cpp
+    src/sound.cpp
+    src/resources.cpp
 )
 set_target_properties( motorcar PROPERTIES CXX_STANDARD 20 )
 ## Declare our engine's header path.
 ## This allows targets that depend on the engine to #include them.
 target_include_directories( motorcar PUBLIC src )
-target_link_libraries( motorcar PUBLIC glfw )
+target_link_libraries( motorcar PUBLIC glfw soloud spdlog::spdlog )
 
 add_executable( helloworld demo/helloworld.cpp )
 set_target_properties( helloworld PROPERTIES CXX_STANDARD 20 )
 target_link_libraries( helloworld PRIVATE motorcar )
 
+# asan + wall + werror
+if (MSVC)
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /fsanitize=address")
+    set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}   /fsanitize=address")
+
+    target_compile_options(motorcar PRIVATE /W4 /WX)
+else()
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
+    set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}   -fsanitize=address -fno-omit-frame-pointer")
+
+    target_compile_options(motorcar PRIVATE -Wall -Werror)
+endif()

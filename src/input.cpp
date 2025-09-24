@@ -20,12 +20,14 @@ InputManager::InputManager(Engine& engine)
 		if (action == GLFW_RELEASE) {
 			us.keys_released_this_frame[key] = true;
 		} else {
-			us.keys_pressed_this_frame[key] = true;
+			us.keys_repeated_this_frame[key] = true;
+			us.keys_pressed_this_frame[key] = action == GLFW_PRESS;
 		}
 	});
 }
 
 void InputManager::clear_key_buffers() {
+	this->keys_repeated_this_frame.fill(false);
 	this->keys_pressed_this_frame.fill(false);
 	this->keys_released_this_frame.fill(false);
 }
@@ -35,6 +37,9 @@ bool InputManager::is_key_held_down(Key k) const {
 }
 bool InputManager::is_key_pressed_this_frame(Key k) const {
 	return this->keys_pressed_this_frame[k.keycode];
+}
+bool InputManager::is_key_repeated_this_frame(Key k) const {
+	return this->keys_repeated_this_frame[k.keycode];
 }
 bool InputManager::is_key_released_this_frame(Key k) const {
 	return this->keys_released_this_frame[k.keycode];

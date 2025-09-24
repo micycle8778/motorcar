@@ -37,7 +37,6 @@ bool GraphicsManager::window_should_close() {
 }
 
 void GraphicsManager::draw() {
-    engine.input.clear_key_buffers();
     glfwPollEvents();
 }
 

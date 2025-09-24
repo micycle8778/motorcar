@@ -19,6 +19,10 @@ int main() {
             spdlog::debug("tilde pressed {} times", press_count);
         }
 
+        if (e.input.is_key_repeated_this_frame('f')) {
+            spdlog::debug("respects paid");
+        }
+
         if (e.input.is_key_released_this_frame(' ')) {
             release_count++;
             spdlog::debug("space released {} times", release_count);

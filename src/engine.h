@@ -34,10 +34,11 @@ void motorcar::Engine::run(auto callback) {
 #define SIMULATION_FREQ 5
 
         while (glfwGetTime() > time_simulated_secs) {
+            callback();
+            input.clear_key_buffers();
             time_simulated_secs += (1. / SIMULATION_FREQ);
         }
 
-        callback();
         gfx.draw();
     }
 }

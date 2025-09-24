@@ -43,6 +43,7 @@ namespace motorcar {
         friend class Engine;
 
         Engine& engine;
+        std::array<bool, GLFW_KEY_LAST + 1> keys_repeated_this_frame;
         std::array<bool, GLFW_KEY_LAST + 1> keys_pressed_this_frame;
         std::array<bool, GLFW_KEY_LAST + 1> keys_released_this_frame;
 
@@ -53,6 +54,7 @@ namespace motorcar {
 
         bool is_key_held_down(Key k) const;
         bool is_key_pressed_this_frame(Key k) const;
+        bool is_key_repeated_this_frame(Key k) const;
         bool is_key_released_this_frame(Key k) const;
     };
 }

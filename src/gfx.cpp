@@ -53,6 +53,26 @@ fn fragment_shader_main( in: VertexOutput ) -> @location(0) vec4f {
 }
 )";
 
+struct GraphicsManager::WebGPUState {
+    WGPUInstance instance = nullptr;
+    WGPUSurface surface = nullptr;
+    WGPUAdapter adapter = nullptr;
+    WGPUDevice device = nullptr;
+    WGPUQueue queue = nullptr;
+
+    WGPUBuffer vertex_buffer = nullptr;
+    WGPUBuffer uniforms_buffer = nullptr;
+    WGPUSampler sampler = nullptr;
+    WGPUShaderModule shader_module = nullptr;
+    WGPURenderPipeline pipeline = nullptr;
+    WGPUBindGroupLayout layout = nullptr;
+
+    WebGPUState(GLFWwindow*);
+
+    void setup(GLFWwindow*);
+    void init_pipeline(GLFWwindow*);
+};
+
 namespace {
     template< typename T > constexpr const T* to_ptr( const T& val ) { return &val; }
     template< typename T, std::size_t N > constexpr const T* to_ptr( const T (&&arr)[N] ) { return arr; }
@@ -77,10 +97,29 @@ namespace {
 
     struct Texture {
         WGPUTexture data = nullptr;
+        WGPUBindGroup bind_group = nullptr;
+        WGPUTextureView texture_view = nullptr;
         int width = 0;
         int height = 0;
 
-        Texture(WGPUTexture data, int width, int height) : data(data), width(width), height(height) {}
+        void invalidate() {
+            texture_view = nullptr;
+            bind_group = nullptr;
+            data = nullptr;
+        }
+
+        void destroy() {
+            if (bind_group != nullptr) wgpuBindGroupRelease(bind_group);
+            if (texture_view != nullptr) wgpuTextureViewRelease(texture_view);
+            if (data != nullptr) wgpuTextureDestroy(data);
+
+            bind_group = nullptr;
+            texture_view = nullptr;
+            data = nullptr;
+        }
+
+        Texture(WGPUTexture data, WGPUBindGroup bind_group, WGPUTextureView texture_view, int width, int height) : 
+            data(data), bind_group(bind_group), texture_view(texture_view), width(width), height(height) {}
 
         Texture(Texture&) = delete;
         Texture& operator=(Texture&) = delete;
@@ -88,34 +127,42 @@ namespace {
         Texture(Texture&& other) {
             if (this != &other) {
                 data = other.data;
+                bind_group = other.bind_group;
+                texture_view = other.texture_view;
+
                 width = other.width;
                 height = other.height;
-                other.data = nullptr;
+
+                other.invalidate();
             }
         }
 
         Texture& operator=(Texture&& other) {
             if (this != &other) {
-                if (data != nullptr) wgpuTextureDestroy(data);
+                destroy();
+
                 data = other.data;
+                bind_group = other.bind_group;
+                texture_view = other.texture_view;
+
                 width = other.width;
                 height = other.height;
-                other.data = nullptr;
+
+                other.invalidate();
             }
 
             return *this;
         }
 
         ~Texture() {
-            //if (data != nullptr) wgpuTextureDestroy(data);
+            destroy();
         };
     };
 
     struct TextureLoader : public ILoadResources {
-        WGPUDevice device;
-        WGPUQueue queue;
+        std::shared_ptr<GraphicsManager::WebGPUState> webgpu;
 
-        TextureLoader(WGPUDevice device, WGPUQueue queue) : device(device), queue(queue) {}
+        TextureLoader(std::shared_ptr<GraphicsManager::WebGPUState> webgpu) : webgpu(webgpu) {}
 
         std::optional<Resource> load_resource(const std::filesystem::path& path, std::ifstream& file_stream) override {
             auto file_data = get_data_from_file_stream(file_stream);
@@ -135,7 +182,7 @@ namespace {
 
             spdlog::trace("Loaded image file {}. Texture size: {}x{}", path.string(), width, height);
 
-            WGPUTexture tex = wgpuDeviceCreateTexture(device, to_ptr(WGPUTextureDescriptor{
+            WGPUTexture tex = wgpuDeviceCreateTexture(webgpu->device, to_ptr(WGPUTextureDescriptor{
                 //.label = WGPUStringView { .data = path.c_str(), .length = WGPU_STRLEN },
                 .usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
                 .dimension = WGPUTextureDimension_2D,
@@ -146,7 +193,7 @@ namespace {
             }));
 
             wgpuQueueWriteTexture(
-                queue,
+                webgpu->queue,
                 to_ptr<WGPUTexelCopyTextureInfo>({ .texture = tex }),
                 image_data,
                 width * height * 4,
@@ -154,35 +201,34 @@ namespace {
                 to_ptr( WGPUExtent3D{ (uint32_t)width, (uint32_t)height, 1 } )
             );
 
-            if (tex == nullptr) {
-                spdlog::trace("Failed to upload texture {}.", path.string());
-            }
+            WGPUTextureView texture_view = wgpuTextureCreateView( tex, nullptr );
+            WGPUBindGroup bind_group = wgpuDeviceCreateBindGroup( webgpu->device, to_ptr( WGPUBindGroupDescriptor{
+                .layout = webgpu->layout,
+                .entryCount = 3,
+                // The entries `.binding` matches what we wrote in the shader.
+                .entries = to_ptr<WGPUBindGroupEntry>({
+                    {
+                        .binding = 0,
+                        .buffer = webgpu->uniforms_buffer,
+                        .size = sizeof( Uniforms )
+                    },
+                    {
+                        .binding = 1,
+                        .sampler = webgpu->sampler,
+                    },
+                    {
+                        .binding = 2,
+                        .textureView = texture_view
+                    }
+                    })
+                } ) );
 
             stbi_image_free(image_data);
 
-            return Resource(Texture(tex, width, height));
+            return Resource(Texture(tex, bind_group, texture_view, width, height));
         }
     };
 }
-
-struct GraphicsManager::WebGPUState {
-    WGPUInstance instance = nullptr;
-    WGPUSurface surface = nullptr;
-    WGPUAdapter adapter = nullptr;
-    WGPUDevice device = nullptr;
-    WGPUQueue queue = nullptr;
-
-    WGPUBuffer vertex_buffer = nullptr;
-    WGPUBuffer uniforms_buffer = nullptr;
-    WGPUSampler sampler = nullptr;
-    WGPUShaderModule shader_module = nullptr;
-    WGPURenderPipeline pipeline = nullptr;
-
-    WebGPUState(GLFWwindow*);
-
-    void setup(GLFWwindow*);
-    void init_pipeline(GLFWwindow*);
-};
 
 void GraphicsManager::WebGPUState::setup(GLFWwindow* window) {
     instance = wgpuCreateInstance(to_ptr(WGPUInstanceDescriptor{}));
@@ -297,101 +343,102 @@ void GraphicsManager::WebGPUState::init_pipeline(GLFWwindow* window) {
     shader_module = wgpuDeviceCreateShaderModule( device, &shader_desc );   
 
     pipeline = wgpuDeviceCreateRenderPipeline( device, to_ptr( WGPURenderPipelineDescriptor{
-    
-    // Describe the vertex shader inputs
-    .vertex = {
-        .module = shader_module,
-        .entryPoint = WGPUStringView{ "vertex_shader_main", std::string_view("vertex_shader_main").length() },
-        // Vertex attributes.
-        .bufferCount = 2,
-        .buffers = to_ptr<WGPUVertexBufferLayout>({
-            // We have one buffer with our per-vertex position and UV data. This data never changes.
-            // Note how the type, byte offset, and stride (bytes between elements) exactly matches our `vertex_buffer`.
-            {
-                .stepMode = WGPUVertexStepMode_Vertex,
-                .arrayStride = 4*sizeof(float),
-                .attributeCount = 2,
-                .attributes = to_ptr<WGPUVertexAttribute>({
-                    // Position x,y are first.
-                    {
-                        .format = WGPUVertexFormat_Float32x2,
-                        .offset = 0,
-                        .shaderLocation = 0
-                    },
-                    // Texture coordinates u,v are second.
-                    {
-                        .format = WGPUVertexFormat_Float32x2,
-                        .offset = 2*sizeof(float),
-                        .shaderLocation = 1
-                    }
-                    })
-            },
-            // We will use a second buffer with our per-sprite translation and scale. This data will be set in our draw function.
-            {
-                // This data is per-instance. All four vertices will get the same value. Each instance of drawing the vertices will get a different value.
-                // The type, byte offset, and stride (bytes between elements) exactly match the array of `InstanceData` structs we will upload in our draw function.
-                .stepMode = WGPUVertexStepMode_Instance,
-                .arrayStride = sizeof(InstanceData),
-                .attributeCount = 2,
-                .attributes = to_ptr<WGPUVertexAttribute>({
-                    // Translation as a 3D vector.
-                    {
-                        .format = WGPUVertexFormat_Float32x3,
-                        .offset = offsetof(InstanceData, translation),
-                        .shaderLocation = 2
-                    },
-                    // Scale as a 2D vector for non-uniform scaling.
-                    {
-                        .format = WGPUVertexFormat_Float32x2,
-                        .offset = offsetof(InstanceData, scale),
-                        .shaderLocation = 3
-                    }
-                    })
-            }
-            })
-        },
-    
-    // Interpret our 4 vertices as a triangle strip
-    .primitive = WGPUPrimitiveState{
-        .topology = WGPUPrimitiveTopology_TriangleStrip,
-        },
-    
-    // No multi-sampling (1 sample per pixel, all bits on).
-    .multisample = WGPUMultisampleState{
-        .count = 1,
-        .mask = ~0u
-        },
-    
-    // Describe the fragment shader and its output
-    .fragment = to_ptr( WGPUFragmentState{
-        .module = shader_module,
-        .entryPoint = WGPUStringView{ "fragment_shader_main", std::string_view("fragment_shader_main").length() },
-        
-        // Our fragment shader outputs a single color value per pixel.
-        .targetCount = 1,
-        .targets = to_ptr<WGPUColorTargetState>({
-            {
-                .format = wgpuSurfaceGetPreferredFormat( surface, adapter ),
-                // The images we want to draw may have transparency, so let's turn on alpha blending with over compositing (ɑ⋅foreground + (1-ɑ)⋅background).
-                // This will blend with whatever has already been drawn.
-                .blend = to_ptr( WGPUBlendState{
-                    // Over blending for color
-                    .color = {
-                        .operation = WGPUBlendOperation_Add,
-                        .srcFactor = WGPUBlendFactor_SrcAlpha,
-                        .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha
+        // Describe the vertex shader inputs
+        .vertex = {
+            .module = shader_module,
+            .entryPoint = WGPUStringView{ "vertex_shader_main", std::string_view("vertex_shader_main").length() },
+            // Vertex attributes.
+            .bufferCount = 2,
+            .buffers = to_ptr<WGPUVertexBufferLayout>({
+                // We have one buffer with our per-vertex position and UV data. This data never changes.
+                // Note how the type, byte offset, and stride (bytes between elements) exactly matches our `vertex_buffer`.
+                {
+                    .stepMode = WGPUVertexStepMode_Vertex,
+                    .arrayStride = 4*sizeof(float),
+                    .attributeCount = 2,
+                    .attributes = to_ptr<WGPUVertexAttribute>({
+                        // Position x,y are first.
+                        {
+                            .format = WGPUVertexFormat_Float32x2,
+                            .offset = 0,
+                            .shaderLocation = 0
                         },
-                    // Leave destination alpha alone
-                    .alpha = {
-                        .operation = WGPUBlendOperation_Add,
-                        .srcFactor = WGPUBlendFactor_Zero,
-                        .dstFactor = WGPUBlendFactor_One
+                        // Texture coordinates u,v are second.
+                        {
+                            .format = WGPUVertexFormat_Float32x2,
+                            .offset = 2*sizeof(float),
+                            .shaderLocation = 1
                         }
-                    } ),
-                .writeMask = WGPUColorWriteMask_All
-            }})
-        } )
+                        })
+                },
+                // We will use a second buffer with our per-sprite translation and scale. This data will be set in our draw function.
+                {
+                    // This data is per-instance. All four vertices will get the same value. Each instance of drawing the vertices will get a different value.
+                    // The type, byte offset, and stride (bytes between elements) exactly match the array of `InstanceData` structs we will upload in our draw function.
+                    .stepMode = WGPUVertexStepMode_Instance,
+                    .arrayStride = sizeof(InstanceData),
+                    .attributeCount = 2,
+                    .attributes = to_ptr<WGPUVertexAttribute>({
+                        // Translation as a 3D vector.
+                        {
+                            .format = WGPUVertexFormat_Float32x3,
+                            .offset = offsetof(InstanceData, translation),
+                            .shaderLocation = 2
+                        },
+                        // Scale as a 2D vector for non-uniform scaling.
+                        {
+                            .format = WGPUVertexFormat_Float32x2,
+                            .offset = offsetof(InstanceData, scale),
+                            .shaderLocation = 3
+                        }
+                        })
+                }
+                })
+            },
+        
+        // Interpret our 4 vertices as a triangle strip
+        .primitive = WGPUPrimitiveState{
+            .topology = WGPUPrimitiveTopology_TriangleStrip,
+            },
+        
+        // No multi-sampling (1 sample per pixel, all bits on).
+        .multisample = WGPUMultisampleState{
+            .count = 1,
+            .mask = ~0u
+            },
+        
+        // Describe the fragment shader and its output
+        .fragment = to_ptr( WGPUFragmentState{
+            .module = shader_module,
+            .entryPoint = WGPUStringView{ "fragment_shader_main", std::string_view("fragment_shader_main").length() },
+            
+            // Our fragment shader outputs a single color value per pixel.
+            .targetCount = 1,
+            .targets = to_ptr<WGPUColorTargetState>({
+                {
+                    .format = wgpuSurfaceGetPreferredFormat( surface, adapter ),
+                    // The images we want to draw may have transparency, so let's turn on alpha blending with over compositing (ɑ⋅foreground + (1-ɑ)⋅background).
+                    // This will blend with whatever has already been drawn.
+                    .blend = to_ptr( WGPUBlendState{
+                        // Over blending for color
+                        .color = {
+                            .operation = WGPUBlendOperation_Add,
+                            .srcFactor = WGPUBlendFactor_SrcAlpha,
+                            .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha
+                            },
+                        // Leave destination alpha alone
+                        .alpha = {
+                            .operation = WGPUBlendOperation_Add,
+                            .srcFactor = WGPUBlendFactor_Zero,
+                            .dstFactor = WGPUBlendFactor_One
+                            }
+                        } ),
+                    .writeMask = WGPUColorWriteMask_All
+                }})
+            } )
     } ) );
+
+    layout = wgpuRenderPipelineGetBindGroupLayout(pipeline, 0);
 }
 
 GraphicsManager::WebGPUState::WebGPUState(GLFWwindow* window) {
@@ -429,7 +476,7 @@ GraphicsManager::GraphicsManager(
     glfwWindowHint( GLFW_RESIZABLE, GLFW_FALSE );
 
     webgpu = std::make_shared<WebGPUState>(window);
-    engine.resources->register_resource_loader(std::make_unique<TextureLoader>(webgpu->device, webgpu->queue));
+    engine.resources->register_resource_loader(std::make_unique<TextureLoader>(webgpu));
 }
 
 bool GraphicsManager::window_should_close() {
@@ -527,33 +574,8 @@ void GraphicsManager::draw(std::span<const Sprite> sprites) {
 
         wgpuQueueWriteBuffer( webgpu->queue, instance_buffer, count * sizeof(InstanceData), &instance, sizeof(InstanceData) );
 
-        auto texture_view = wgpuTextureCreateView( tex->data, nullptr );
-        assert( texture_view );
-        assert( tex->data );
-        auto layout = wgpuRenderPipelineGetBindGroupLayout( webgpu->pipeline, 0 );
-        WGPUBindGroup bind_group = wgpuDeviceCreateBindGroup( webgpu->device, to_ptr( WGPUBindGroupDescriptor{
-            .layout = layout,
-            .entryCount = 3,
-            // The entries `.binding` matches what we wrote in the shader.
-            .entries = to_ptr<WGPUBindGroupEntry>({
-                {
-                    .binding = 0,
-                    .buffer = webgpu->uniforms_buffer,
-                    .size = sizeof( Uniforms )
-                },
-                {
-                    .binding = 1,
-                    .sampler = webgpu->sampler,
-                },
-                {
-                    .binding = 2,
-                    .textureView = texture_view
-                }
-                })
-            } ) );
-        wgpuRenderPassEncoderSetBindGroup( render_pass, 0, bind_group, 0, nullptr );
+        wgpuRenderPassEncoderSetBindGroup( render_pass, 0, tex->bind_group, 0, nullptr );
         wgpuRenderPassEncoderDraw( render_pass, 4, 1, 0, count );
-        wgpuBindGroupLayoutRelease( layout );
 
         count++;
     }
@@ -565,9 +587,12 @@ void GraphicsManager::draw(std::span<const Sprite> sprites) {
     wgpuSurfacePresent( webgpu->surface );
 
     wgpuBufferRelease(instance_buffer);
+    wgpuCommandEncoderRelease(encoder);
+    wgpuRenderPassEncoderRelease(render_pass);
 }
 
 GraphicsManager::~GraphicsManager() {
+    wgpuBindGroupLayoutRelease(webgpu->layout);
     wgpuRenderPipelineRelease(webgpu->pipeline);
     wgpuShaderModuleRelease(webgpu->shader_module);
     wgpuSamplerRelease(webgpu->sampler);

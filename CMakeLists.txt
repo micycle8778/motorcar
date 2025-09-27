@@ -61,7 +61,7 @@ if(WIN32)
 endif()
 
 # webgpu
-set(WEBGPU_BACKEND "dawn" CACHE STRING "WebGPU backend (wgpu or dawn)")
+set(WEBGPU_BACKEND "wgpu" CACHE STRING "WebGPU backend (wgpu or dawn)")
 FetchContent_Declare(
   webgpu
   GIT_REPOSITORY https://github.com/yig/WebGPU-distribution

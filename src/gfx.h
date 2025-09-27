@@ -16,13 +16,15 @@ namespace motorcar {
     struct Engine;
 
     class GraphicsManager {
-        friend class InputManager; // friend :)
+        public:
+            struct WebGPUState;
 
-        struct WebGPUState;
+        private:
+            friend class InputManager; // friend :)
 
-        GLFWwindow* window;
-        std::shared_ptr<WebGPUState> webgpu;
-        Engine& engine;
+            GLFWwindow* window;
+            std::shared_ptr<WebGPUState> webgpu;
+            Engine& engine;
 
         public:
             GraphicsManager(

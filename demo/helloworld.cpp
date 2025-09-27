@@ -14,15 +14,23 @@ int main() {
     std::vector<motorcar::Sprite> sprites = {
         motorcar::Sprite {
             .position = motorcar::vec2(0),
-            .scale = motorcar::vec2(70),
+            .scale = motorcar::vec2(25),
             // .scale = motorcar::vec2(0.1, 0.1),
-            .depth = 0,
+            .depth = .3,
             .texture_path = "bowser.png"
         },
-        // motorcar::Sprite {
-        //     .depth = 0.,
-        //     .texture_path = "watercan.png"
-        // },
+        motorcar::Sprite {
+            .position = motorcar::vec2(30),
+            .scale = motorcar::vec2(45),
+            .depth = .1,
+            .texture_path = "watercan.png"
+        },
+        motorcar::Sprite {
+            .position = motorcar::vec2(-50),
+            .scale = motorcar::vec2(16),
+            .depth = .2,
+            .texture_path = "michael-day.png"
+        },
     };
 
     motorcar::Engine e("helloworld");

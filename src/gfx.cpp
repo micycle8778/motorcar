@@ -49,7 +49,6 @@ fn vertex_shader_main( in: VertexInput ) -> VertexOutput {
 @fragment
 fn fragment_shader_main( in: VertexOutput ) -> @location(0) vec4f {
     var color = textureSample( texData, texSampler, in.texcoords ).rgba;
-    color += vec4(in.texcoords.x, in.texcoords.y, .2, .2);
     return color;
 }
 )";
@@ -114,8 +113,9 @@ namespace {
 
     struct TextureLoader : public ILoadResources {
         WGPUDevice device;
+        WGPUQueue queue;
 
-        TextureLoader(WGPUDevice device) : device(device) {}
+        TextureLoader(WGPUDevice device, WGPUQueue queue) : device(device), queue(queue) {}
 
         std::optional<Resource> load_resource(const std::filesystem::path& path, std::ifstream& file_stream) override {
             auto file_data = get_data_from_file_stream(file_stream);
@@ -144,6 +144,15 @@ namespace {
                 .mipLevelCount = 1,
                 .sampleCount = 1
             }));
+
+            wgpuQueueWriteTexture(
+                queue,
+                to_ptr<WGPUTexelCopyTextureInfo>({ .texture = tex }),
+                image_data,
+                width * height * 4,
+                to_ptr<WGPUTexelCopyBufferLayout>({ .bytesPerRow = (uint32_t)(width*4), .rowsPerImage = (uint32_t)height }),
+                to_ptr( WGPUExtent3D{ (uint32_t)width, (uint32_t)height, 1 } )
+            );
 
             if (tex == nullptr) {
                 spdlog::trace("Failed to upload texture {}.", path.string());
@@ -420,7 +429,7 @@ GraphicsManager::GraphicsManager(
     glfwWindowHint( GLFW_RESIZABLE, GLFW_FALSE );
 
     webgpu = std::make_shared<WebGPUState>(window);
-    engine.resources->register_resource_loader(std::make_unique<TextureLoader>(webgpu->device));
+    engine.resources->register_resource_loader(std::make_unique<TextureLoader>(webgpu->device, webgpu->queue));
 }
 
 bool GraphicsManager::window_should_close() {
@@ -485,6 +494,7 @@ void GraphicsManager::draw(std::span<const Sprite> sprites) {
     }
     wgpuQueueWriteBuffer( webgpu->queue, webgpu->uniforms_buffer, 0, &uniforms, sizeof(Uniforms) );
 
+
     // draw the little guys
     int count = 0;
     for (Sprite sprite : sorted_sprites) {
@@ -504,11 +514,12 @@ void GraphicsManager::draw(std::span<const Sprite> sprites) {
             scale = vec2( 1.0, f32(tex->height)/tex->width );
         }
 
-        // spdlog::trace("rendering texture of size ({}, {}) at ({}, {}, {}) with scale ({}, {})", 
-        //         tex->width, tex->height,
-        //         sprite.position.x, sprite.position.y, sprite.depth,
-        //         scale.x * sprite.scale.x, scale.y * sprite.scale.y
-        // );
+        spdlog::trace("rendering texture {} of size ({}, {}) at ({}, {}, {}) with scale ({}, {})", 
+                count,    
+                tex->width, tex->height,
+                sprite.position.x, sprite.position.y, sprite.depth,
+                scale.x * sprite.scale.x, scale.y * sprite.scale.y
+        );
         instance = InstanceData {
             .translation = vec3(sprite.position.x, sprite.position.y, sprite.depth),
             .scale = scale * sprite.scale
@@ -543,6 +554,8 @@ void GraphicsManager::draw(std::span<const Sprite> sprites) {
         wgpuRenderPassEncoderSetBindGroup( render_pass, 0, bind_group, 0, nullptr );
         wgpuRenderPassEncoderDraw( render_pass, 4, 1, 0, count );
         wgpuBindGroupLayoutRelease( layout );
+
+        count++;
     }
 
     wgpuRenderPassEncoderEnd(render_pass);

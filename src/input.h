@@ -40,7 +40,7 @@ namespace motorcar {
     // TODO: input action abstraction
     class InputManager {
         friend class GraphicsManager;
-        friend class Engine;
+        friend struct Engine;
 
         Engine& engine;
         std::array<bool, GLFW_KEY_LAST + 1> keys_repeated_this_frame;

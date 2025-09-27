@@ -49,7 +49,7 @@ fn vertex_shader_main( in: VertexInput ) -> VertexOutput {
 @fragment
 fn fragment_shader_main( in: VertexOutput ) -> @location(0) vec4f {
     var color = textureSample( texData, texSampler, in.texcoords ).rgba;
-    color += vec4(.2, .2, .2, .2);
+    color += vec4(in.texcoords.x, in.texcoords.y, .2, .2);
     return color;
 }
 )";
@@ -108,7 +108,7 @@ namespace {
         }
 
         ~Texture() {
-            if (data != nullptr) wgpuTextureDestroy(data);
+            //if (data != nullptr) wgpuTextureDestroy(data);
         };
     };
 
@@ -122,9 +122,11 @@ namespace {
             int width, height, channels;
             unsigned char* image_data = stbi_load_from_memory(
                 file_data.data(),
-                file_data.size(),
+                (int)(file_data.size()),
                 &width, &height, &channels, 4
             );
+
+            spdlog::trace("{}, {}, {}, {}", image_data[0], image_data[1],image_data[2],image_data[3]);
 
             if (image_data == nullptr) {
                 spdlog::trace("Failed to load image file {}: {}", path.string(), stbi_failure_reason());
@@ -134,7 +136,7 @@ namespace {
             spdlog::trace("Loaded image file {}. Texture size: {}x{}", path.string(), width, height);
 
             WGPUTexture tex = wgpuDeviceCreateTexture(device, to_ptr(WGPUTextureDescriptor{
-                .label = WGPUStringView( path.c_str(), WGPU_STRLEN ),
+                //.label = WGPUStringView { .data = path.c_str(), .length = WGPU_STRLEN },
                 .usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
                 .dimension = WGPUTextureDimension_2D,
                 .size = { (uint32_t)width, (uint32_t)height, 1 },
@@ -481,7 +483,6 @@ void GraphicsManager::draw(std::span<const Sprite> sprites) {
         uniforms.projection[0][0] *= height;
         uniforms.projection[0][0] /= width;
     }
-    // uniforms.projection = mat4{1};
     wgpuQueueWriteBuffer( webgpu->queue, webgpu->uniforms_buffer, 0, &uniforms, sizeof(Uniforms) );
 
     // draw the little guys
@@ -503,11 +504,11 @@ void GraphicsManager::draw(std::span<const Sprite> sprites) {
             scale = vec2( 1.0, f32(tex->height)/tex->width );
         }
 
-        spdlog::trace("rendering texture of size ({}, {}) at ({}, {}, {}) with scale ({}, {})", 
-                tex->width, tex->height,
-                sprite.position.x, sprite.position.y, sprite.depth,
-                scale.x * sprite.scale.x, scale.y * sprite.scale.y
-        );
+        // spdlog::trace("rendering texture of size ({}, {}) at ({}, {}, {}) with scale ({}, {})", 
+        //         tex->width, tex->height,
+        //         sprite.position.x, sprite.position.y, sprite.depth,
+        //         scale.x * sprite.scale.x, scale.y * sprite.scale.y
+        // );
         instance = InstanceData {
             .translation = vec3(sprite.position.x, sprite.position.y, sprite.depth),
             .scale = scale * sprite.scale
@@ -517,6 +518,7 @@ void GraphicsManager::draw(std::span<const Sprite> sprites) {
 
         auto texture_view = wgpuTextureCreateView( tex->data, nullptr );
         assert( texture_view );
+        assert( tex->data );
         auto layout = wgpuRenderPipelineGetBindGroupLayout( webgpu->pipeline, 0 );
         WGPUBindGroup bind_group = wgpuDeviceCreateBindGroup( webgpu->device, to_ptr( WGPUBindGroupDescriptor{
             .layout = layout,

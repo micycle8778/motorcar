@@ -121,13 +121,14 @@ add_executable( helloworld demo/helloworld.cpp )
 set_target_properties( helloworld PROPERTIES CXX_STANDARD 20 )
 target_link_libraries( helloworld PRIVATE motorcar )
 target_copy_webgpu_binaries( helloworld )
+add_custom_target( run_helloworld helloworld USES_TERMINAL WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} )
 
 # asan + wall + werror
 if (MSVC)
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /fsanitize=address")
-    set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}   /fsanitize=address")
+    # set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /fsanitize=address")
+    # set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}   /fsanitize=address")
 
-    target_compile_options(motorcar PRIVATE /W4 /WX)
+    target_compile_options(motorcar PRIVATE /W4)
 else()
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
     set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}   -fsanitize=address -fno-omit-frame-pointer")

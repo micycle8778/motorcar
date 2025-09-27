@@ -12,16 +12,17 @@ int main() {
     int release_count = 0;
 
     std::vector<motorcar::Sprite> sprites = {
-        // motorcar::Sprite {
-        //     .position = motorcar::vec2(0.1, 0.1),
-        //     .scale = motorcar::vec2(0.1, 0.1),
-        //     .depth = 1.,
-        //     .texture_path = "michael-day.png"
-        // },
         motorcar::Sprite {
-            .depth = 0.,
-            .texture_path = "watercan.png"
+            .position = motorcar::vec2(0),
+            .scale = motorcar::vec2(70),
+            // .scale = motorcar::vec2(0.1, 0.1),
+            .depth = 0,
+            .texture_path = "bowser.png"
         },
+        // motorcar::Sprite {
+        //     .depth = 0.,
+        //     .texture_path = "watercan.png"
+        // },
     };
 
     motorcar::Engine e("helloworld");

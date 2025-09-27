@@ -8,23 +8,6 @@
 
 using namespace motorcar;
 
-namespace {
-    struct SoLoudWavLoader : public ILoadResources {
-        virtual std::optional<Resource> load_resource(const std::filesystem::path& path, std::ifstream& file_stream) override {
-            auto data = get_data_from_file_stream(file_stream);
-            SoLoud::Wav sound;
-            auto error = sound.loadMem(data.data(), data.size(), false, false);
-
-            if (error) {
-                spdlog::trace("Failed to load audio file {}.", path.string());
-                return {};
-            } else {
-                return std::move(sound);
-            }
-        }
-    };
-}
-
 Resource::Resource(Resource&& other) noexcept {
     if (this != &other) {
         data = other.data;
@@ -66,10 +49,6 @@ std::vector<uint8_t> ILoadResources::get_data_from_file_stream(std::ifstream& fi
     file_stream.read(reinterpret_cast<char*>(result.data()), size);
 
     return result;
-}
-
-ResourceManager::ResourceManager() {
-    register_resource_loader(std::make_unique<SoLoudWavLoader>());
 }
 
 std::filesystem::path ResourceManager::convert_path(std::string_view path) {

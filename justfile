@@ -8,7 +8,7 @@ build-release:
     cmake --build out/Release
 
 run-debug: build-debug
-    ./out/Debug/helloworld
+    RUST_BACKTRACE=1 ./out/Debug/helloworld
 
 run-release: build-release
     ./out/Release/helloworld

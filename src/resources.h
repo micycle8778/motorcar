@@ -9,17 +9,15 @@
 #include <vector>
 #include "spdlog/spdlog.h"
 
-// TODO:
 // resource manager needs to
 // 1. convert paths "file.txt" to "cwd://assets/file.txt"
 // 2. pick the correct resource loader to load these resources
 //    (by magic number or file extension)
-// 3. automatically reload resources when changed
-// 4. make available these various resources
+// 3. make available these various resources
+// 4. TODO: automatically reload resources when changed
 
 namespace motorcar {
-    // type erased container
-    // cannot be copied, but can be moved
+    // type erased version of unique_ptr for storing resources
     class Resource {
         void* data = nullptr;
         const std::type_info* stored_type = nullptr;
@@ -65,7 +63,6 @@ namespace motorcar {
         std::vector<std::unique_ptr<ILoadResources>> resource_loaders;
 
         public:
-            ResourceManager();
             void register_resource_loader(std::unique_ptr<ILoadResources> resource_loader);
             static std::filesystem::path convert_path(std::string_view path);
 
@@ -86,7 +83,7 @@ std::optional<T*> motorcar::ResourceManager::get_resource(std::string_view filen
         }
     }
 
-    // if none found, find a good resource loader
+    // if no T found, find a good resource loader
     std::filesystem::path path = convert_path(filename);
     std::ifstream file_stream(path, std::ios::binary);
 

@@ -10,6 +10,8 @@ namespace motorcar {
 
         public:
             SoundManager(Engine& engine);
+            ~SoundManager();
+
             void play_sound(std::string_view filename);
     };
 }

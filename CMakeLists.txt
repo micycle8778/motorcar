@@ -60,6 +60,49 @@ if(WIN32)
     target_compile_definitions( soloud PRIVATE MA_NO_JACK )
 endif()
 
+# webgpu
+set(WEBGPU_BACKEND "wgpu" CACHE STRING "WebGPU backend (wgpu or dawn)")
+FetchContent_Declare(
+  webgpu
+  GIT_REPOSITORY https://github.com/yig/WebGPU-distribution
+  GIT_TAG        cs425-2025
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
+)
+FetchContent_MakeAvailable( webgpu )
+
+FetchContent_Declare(
+  glfw3webgpu
+  GIT_REPOSITORY https://github.com/eliemichel/glfw3webgpu
+  GIT_TAG        fdcabcc54b56b50c12c10f5317abf8ae7ac32c29
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
+)
+FetchContent_MakeAvailable( glfw3webgpu )
+
+# image loading
+FetchContent_Declare(
+  stb
+  GIT_REPOSITORY https://github.com/nothings/stb/
+  GIT_TAG        f58f558c120e9b32c217290b80bad1a0729fbb2c
+  GIT_SHALLOW FALSE
+  GIT_PROGRESS TRUE
+)
+FetchContent_MakeAvailable( stb )
+## stb doesn't have a `CMakeLists.txt`. Let's declare a header-only library with an include path.
+add_library( stb INTERFACE )
+target_include_directories( stb INTERFACE ${stb_SOURCE_DIR} )
+
+# math
+FetchContent_Declare(
+    glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG e7714885929f1dcd2bdc2531cc99d3c1dc6daa18
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE
+    )
+FetchContent_MakeAvailable( glm )
+
 ## Declare the engine library
 add_library( motorcar STATIC
     src/engine.cpp
@@ -72,11 +115,12 @@ set_target_properties( motorcar PROPERTIES CXX_STANDARD 20 )
 ## Declare our engine's header path.
 ## This allows targets that depend on the engine to #include them.
 target_include_directories( motorcar PUBLIC src )
-target_link_libraries( motorcar PUBLIC glfw soloud spdlog::spdlog )
+target_link_libraries( motorcar PUBLIC glfw soloud spdlog::spdlog webgpu glfw3webgpu glm stb )
 
 add_executable( helloworld demo/helloworld.cpp )
 set_target_properties( helloworld PROPERTIES CXX_STANDARD 20 )
 target_link_libraries( helloworld PRIVATE motorcar )
+target_copy_webgpu_binaries( helloworld )
 
 # asan + wall + werror
 if (MSVC)

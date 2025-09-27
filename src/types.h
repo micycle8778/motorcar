@@ -1,0 +1,37 @@
+#pragma once
+#include "glm/fwd.hpp"
+#include "glm/glm.hpp"
+#include <cmath>
+#include <cstdint>
+#include <string_view>
+
+namespace motorcar {
+    typedef uint8_t u8;
+
+    typedef uint32_t u32;
+    typedef uint64_t u64;
+
+    typedef int32_t i32;
+    typedef int64_t i64;
+
+    // WARN: The C standard does *not* guarantee these are 32-bit and 64-bit.
+    // C++23 has <stdfloat> for this, but we're not writing in C++23, are we?
+    typedef float f32;
+    typedef double f64;
+
+    typedef glm::vec2 vec2;
+    typedef glm::vec3 vec3;
+    typedef glm::vec4 vec4;
+    typedef glm::quat quat;
+
+    typedef glm::mat2 mat2;
+    typedef glm::mat3 mat3;
+    typedef glm::mat4 mat4;
+
+    struct Sprite {
+        vec2 position = vec2(0);
+        vec2 scale = vec2(1);
+        f32 depth = 0.;
+        std::string_view texture_path;
+    };
+}

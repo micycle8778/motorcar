@@ -1,13 +1,15 @@
 #include "engine.h"
+#include "gfx.h"
 #include "input.h"
 using namespace motorcar;
 
 InputManager::InputManager(Engine& engine) 
 		: engine(engine), 
+		keys_repeated_this_frame({ 0 }),
 		keys_pressed_this_frame({ 0 }),
 		keys_released_this_frame({ 0 })
 {
-	glfwSetKeyCallback(engine.gfx.window, [](
+	glfwSetKeyCallback(engine.gfx->window, [](
 			GLFWwindow* window,
 			int key,
 			int,
@@ -15,7 +17,7 @@ InputManager::InputManager(Engine& engine)
 			int
 	) {
 		Engine& engine = *static_cast<Engine*>(glfwGetWindowUserPointer(window));
-		InputManager& us = engine.input;
+		InputManager& us = *engine.input;
 
 		if (action == GLFW_RELEASE) {
 			us.keys_released_this_frame[key] = true;
@@ -33,7 +35,7 @@ void InputManager::clear_key_buffers() {
 }
 
 bool InputManager::is_key_held_down(Key k) const {
-	return glfwGetKey(engine.gfx.window, k.keycode) != GLFW_RELEASE;
+	return glfwGetKey(engine.gfx->window, k.keycode) != GLFW_RELEASE;
 }
 bool InputManager::is_key_pressed_this_frame(Key k) const {
 	return this->keys_pressed_this_frame[k.keycode];

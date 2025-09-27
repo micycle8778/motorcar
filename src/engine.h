@@ -1,44 +1,35 @@
 #pragma once
 
+#include <memory>
+#include <functional>
+#include <span>
 #include <string>
 
-#include "GLFW/glfw3.h"
+#include "types.h"
 
-#include "input.h"
-#include "gfx.h"
-#include "sound.h"
-#include "resources.h"
 
 namespace motorcar {
+    class ResourceManager;
+    class GraphicsManager;
+    class InputManager;
+    class SoundManager;
+
     struct Engine {
-        ResourceManager resources;
-        GraphicsManager gfx;
-        InputManager input;
-        SoundManager sound;
+        std::shared_ptr<SoundManager> sound;
+        std::shared_ptr<ResourceManager> resources;
+        std::shared_ptr<GraphicsManager> gfx;
+        std::shared_ptr<InputManager> input;
 
         double time_simulated_secs = 0.;
 
         Engine(const std::string& game_name);
-        
-        template <typename Callback>
-        void run(Callback callback);
 
+        // the engine should never change memory locations
         Engine(Engine&) = delete;
         Engine& operator=(Engine&) = delete;
+        Engine(Engine&&) = delete;
+        Engine& operator=(Engine&&) = delete;
+
+        void run(std::function<void()> callback, std::vector<Sprite>& sprites);
     };
-}
-
-void motorcar::Engine::run(auto callback) {
-    while (!gfx.window_should_close()) {
-
-#define SIMULATION_FREQ 5
-
-        while (glfwGetTime() > time_simulated_secs) {
-            callback();
-            input.clear_key_buffers();
-            time_simulated_secs += (1. / SIMULATION_FREQ);
-        }
-
-        gfx.draw();
-    }
 }

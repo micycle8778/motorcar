@@ -561,12 +561,12 @@ void GraphicsManager::draw(std::span<const Sprite> sprites) {
             scale = vec2( 1.0, f32(tex->height)/tex->width );
         }
 
-        spdlog::trace("rendering texture {} of size ({}, {}) at ({}, {}, {}) with scale ({}, {})", 
-                count,    
-                tex->width, tex->height,
-                sprite.position.x, sprite.position.y, sprite.depth,
-                scale.x * sprite.scale.x, scale.y * sprite.scale.y
-        );
+        // spdlog::trace("rendering texture {} of size ({}, {}) at ({}, {}, {}) with scale ({}, {})", 
+        //         count,    
+        //         tex->width, tex->height,
+        //         sprite.position.x, sprite.position.y, sprite.depth,
+        //         scale.x * sprite.scale.x, scale.y * sprite.scale.y
+        // );
         instance = InstanceData {
             .translation = vec3(sprite.position.x, sprite.position.y, sprite.depth),
             .scale = scale * sprite.scale
@@ -586,9 +586,12 @@ void GraphicsManager::draw(std::span<const Sprite> sprites) {
     wgpuQueueSubmit( webgpu->queue, 1, &command_buffer );
     wgpuSurfacePresent( webgpu->surface );
 
-    wgpuBufferRelease(instance_buffer);
-    wgpuCommandEncoderRelease(encoder);
+    wgpuCommandBufferRelease(command_buffer);
     wgpuRenderPassEncoderRelease(render_pass);
+    wgpuTextureViewRelease(current_texture_view);
+    wgpuTextureRelease(surface_texture.texture);
+    wgpuCommandEncoderRelease(encoder);
+    wgpuBufferRelease(instance_buffer);
 }
 
 GraphicsManager::~GraphicsManager() {

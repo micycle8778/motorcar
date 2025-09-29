@@ -1,11 +1,13 @@
 #include "types.h"
+#include <cstdlib>
 #include <spdlog/spdlog.h>
 #include <engine.h>
 #include <sound.h>
 #include <input.h>
+#include <unistd.h>
 #include <vector>
 
-int main() {
+int main(int argc, char* argv[]) {
     spdlog::set_level(spdlog::level::trace);
 
     int press_count = 0;
@@ -33,8 +35,13 @@ int main() {
         },
     };
 
+    int count = argc >= 2 ? atoi(argv[1]) : 0;
+    {
     motorcar::Engine e("helloworld");
     e.run([&]() {
+        e.keep_running = count > 0;
+        count--;
+
         if (e.input->is_key_pressed_this_frame('`')) {
             press_count++;
             spdlog::debug("tilde pressed {} times", press_count);
@@ -54,6 +61,8 @@ int main() {
             spdlog::debug("f3");
         }
     }, sprites);
+    }
 
+    sleep(1);
     return 0;
 }

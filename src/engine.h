@@ -21,6 +21,7 @@ namespace motorcar {
         std::shared_ptr<InputManager> input;
 
         double time_simulated_secs = 0.;
+        bool keep_running = true;
 
         Engine(const std::string& game_name);
 

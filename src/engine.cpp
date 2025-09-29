@@ -23,8 +23,8 @@ Engine::Engine(const std::string& name) {
 // }
 
 void Engine::run(std::function<void()> callback, std::vector<Sprite>& sprites) {
-#define SIMULATION_FREQ 5
-    while (!gfx->window_should_close()) {
+#define SIMULATION_FREQ 60
+    while (!gfx->window_should_close() && keep_running) {
         while (glfwGetTime() > time_simulated_secs) {
             callback();
             input->clear_key_buffers();

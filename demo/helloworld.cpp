@@ -1,10 +1,8 @@
 #include "types.h"
-#include <cstdlib>
 #include <spdlog/spdlog.h>
 #include <engine.h>
 #include <sound.h>
 #include <input.h>
-#include <unistd.h>
 #include <vector>
 
 int main(int argc, char* argv[]) {
@@ -35,12 +33,9 @@ int main(int argc, char* argv[]) {
         },
     };
 
-    int count = argc >= 2 ? atoi(argv[1]) : 0;
-    {
     motorcar::Engine e("helloworld");
     e.run([&]() {
-        e.keep_running = count > 0;
-        count--;
+        sprites[0].position.x += 0.1;
 
         if (e.input->is_key_pressed_this_frame('`')) {
             press_count++;
@@ -61,8 +56,6 @@ int main(int argc, char* argv[]) {
             spdlog::debug("f3");
         }
     }, sprites);
-    }
 
-    sleep(1);
     return 0;
 }

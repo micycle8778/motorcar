@@ -8,7 +8,7 @@
 
 using namespace motorcar;
 
-Engine::Engine(const std::string& name) {
+Engine::Engine(const std::string_view& name) {
     resources = std::make_shared<ResourceManager>();
     gfx = std::make_shared<GraphicsManager>(*this, name);
     input = std::make_shared<InputManager>(*this);

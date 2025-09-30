@@ -1,13 +1,14 @@
-#include <iostream>
-#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <optional>
 #include <typeinfo>
 #include <unordered_map>
-#include <utility>
 #include <vector>
+#include <type_traits>
+
 #include "spdlog/spdlog.h"
+
+#include "types.h"
 
 // resource manager needs to
 // 1. convert paths "file.txt" to "cwd://assets/file.txt"
@@ -26,10 +27,11 @@ namespace motorcar {
         public:
             Resource() = default;
             template <typename T>
-            Resource(T&& raw_resource) {
-                data = new T(std::forward<T>(raw_resource));
-                stored_type = &typeid(T);
-                dtor = [](void* ptr) { delete static_cast<T*>(ptr); };
+            Resource(T&& t) {
+                static_assert(!std::is_same<std::remove_reference_t<T>, Resource>::value, "T cannot be Resource itself");
+                data = new std::remove_reference_t<T>(std::forward<T>(t));
+                stored_type = &typeid(std::remove_reference_t<T>);
+                dtor = [](void* ptr) { delete static_cast<std::remove_reference_t<T>*>(ptr); };
             }
 
             template <typename T>
@@ -52,7 +54,7 @@ namespace motorcar {
 
     class ILoadResources {
         public:
-            static std::vector<uint8_t> get_data_from_file_stream(std::ifstream& file_stream);
+            static std::vector<u8> get_data_from_file_stream(std::ifstream& file_stream);
             virtual std::optional<Resource> load_resource(const std::filesystem::path& path, std::ifstream& file_stream) = 0;
 
             virtual ~ILoadResources() = default;
@@ -67,12 +69,19 @@ namespace motorcar {
             static std::filesystem::path convert_path(std::string_view path);
 
             template <typename T>
-            std::optional<T*> get_resource(std::string_view file_name);
+            std::optional<T*> get_resource(std::string_view filename);
+            bool load_resource(std::string_view filename);
+            void insert_resource(std::string_view filename, Resource&& resource);
     };
 }
 
 template <typename T>
 std::optional<T*> motorcar::ResourceManager::get_resource(std::string_view filename) {
+    if (!load_resource(filename)) {
+        spdlog::error("Couldn't load resource '{}'", filename);
+        return {};
+    }
+    
     // look for T in `path_to_resource_map`
     if (path_to_resource_map.contains(filename)) {
         auto maybe = path_to_resource_map[filename].get<T>();
@@ -81,28 +90,7 @@ std::optional<T*> motorcar::ResourceManager::get_resource(std::string_view filen
         } else {
             return {};
         }
+    } else {
+        // unreachable
     }
-
-    // if no T found, find a good resource loader
-    std::filesystem::path path = convert_path(filename);
-    std::ifstream file_stream(path, std::ios::binary);
-
-    if (file_stream.fail()) {
-        spdlog::error("Couldn't open file backing resource '{}'", filename);
-        return {};
-    }
-
-    for (auto& loader : resource_loaders) {
-        std::optional<Resource> maybe_resource = loader->load_resource(path, file_stream);
-
-        // if found, call this function again
-        if (maybe_resource.has_value()) {
-            path_to_resource_map.insert(std::make_pair(filename, std::move(*maybe_resource)));
-            return get_resource<T>(filename);
-        }
-    }
-
-    // if not found, return none
-    spdlog::error("Couldn't load resource '{}'", filename);
-    return {};
 }

@@ -23,7 +23,7 @@ namespace motorcar {
         double time_simulated_secs = 0.;
         bool keep_running = true;
 
-        Engine(const std::string& game_name);
+        Engine(const std::string_view& game_name);
 
         // the engine should never change memory locations
         Engine(Engine&) = delete;

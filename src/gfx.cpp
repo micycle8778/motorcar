@@ -53,6 +53,8 @@ fn fragment_shader_main( in: VertexOutput ) -> @location(0) vec4f {
 }
 )";
 
+const std::string_view MISSING_TEXTURE_PATH = "::gfx::missing_texture";
+
 struct GraphicsManager::WebGPUState {
     WGPUInstance instance = nullptr;
     WGPUSurface surface = nullptr;
@@ -99,8 +101,8 @@ namespace {
         WGPUTexture data = nullptr;
         WGPUBindGroup bind_group = nullptr;
         WGPUTextureView texture_view = nullptr;
-        int width = 0;
-        int height = 0;
+        size_t width = 0;
+        size_t height = 0;
 
         void invalidate() {
             texture_view = nullptr;
@@ -113,18 +115,59 @@ namespace {
             if (texture_view != nullptr) wgpuTextureViewRelease(texture_view);
             if (data != nullptr) wgpuTextureDestroy(data);
 
-            bind_group = nullptr;
-            texture_view = nullptr;
-            data = nullptr;
+            invalidate();
         }
 
-        Texture(WGPUTexture data, WGPUBindGroup bind_group, WGPUTextureView texture_view, int width, int height) : 
-            data(data), bind_group(bind_group), texture_view(texture_view), width(width), height(height) {}
+        Texture(GraphicsManager::WebGPUState& webgpu, const u8* image_data, size_t width, size_t height) {
+            this->width = width;
+            this->height = height;
+
+            data = wgpuDeviceCreateTexture(webgpu.device, to_ptr(WGPUTextureDescriptor{
+                //.label = WGPUStringView { .data = path.c_str(), .length = WGPU_STRLEN },
+                .usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
+                .dimension = WGPUTextureDimension_2D,
+                .size = { (uint32_t)width, (uint32_t)height, 1 },
+                .format = WGPUTextureFormat_RGBA8UnormSrgb,
+                .mipLevelCount = 1,
+                .sampleCount = 1
+            }));
+
+            wgpuQueueWriteTexture(
+                webgpu.queue,
+                to_ptr<WGPUTexelCopyTextureInfo>({ .texture = data }),
+                image_data,
+                width * height * 4,
+                to_ptr<WGPUTexelCopyBufferLayout>({ .bytesPerRow = (uint32_t)(width * 4), .rowsPerImage = (uint32_t)height }),
+                to_ptr(WGPUExtent3D{ (uint32_t)width, (uint32_t)height, 1 })
+            );
+
+            texture_view = wgpuTextureCreateView(data, nullptr);
+            bind_group = wgpuDeviceCreateBindGroup(webgpu.device, to_ptr(WGPUBindGroupDescriptor{
+                .layout = webgpu.layout,
+                .entryCount = 3,
+                // The entries `.binding` matches what we wrote in the shader.
+                .entries = to_ptr<WGPUBindGroupEntry>({
+                    {
+                        .binding = 0,
+                        .buffer = webgpu.uniforms_buffer,
+                        .size = sizeof(Uniforms)
+                    },
+                    {
+                        .binding = 1,
+                        .sampler = webgpu.sampler,
+                    },
+                    {
+                        .binding = 2,
+                        .textureView = texture_view
+                    }
+                })
+            }));
+        }
 
         Texture(Texture&) = delete;
         Texture& operator=(Texture&) = delete;
 
-        Texture(Texture&& other) {
+        Texture(Texture&& other) noexcept {
             if (this != &other) {
                 data = other.data;
                 bind_group = other.bind_group;
@@ -137,7 +180,7 @@ namespace {
             }
         }
 
-        Texture& operator=(Texture&& other) {
+        Texture& operator=(Texture&& other) noexcept {
             if (this != &other) {
                 destroy();
 
@@ -182,50 +225,11 @@ namespace {
 
             spdlog::trace("Loaded image file {}. Texture size: {}x{}", path.string(), width, height);
 
-            WGPUTexture tex = wgpuDeviceCreateTexture(webgpu->device, to_ptr(WGPUTextureDescriptor{
-                //.label = WGPUStringView { .data = path.c_str(), .length = WGPU_STRLEN },
-                .usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
-                .dimension = WGPUTextureDimension_2D,
-                .size = { (uint32_t)width, (uint32_t)height, 1 },
-                .format = WGPUTextureFormat_RGBA8UnormSrgb,
-                .mipLevelCount = 1,
-                .sampleCount = 1
-            }));
-
-            wgpuQueueWriteTexture(
-                webgpu->queue,
-                to_ptr<WGPUTexelCopyTextureInfo>({ .texture = tex }),
-                image_data,
-                width * height * 4,
-                to_ptr<WGPUTexelCopyBufferLayout>({ .bytesPerRow = (uint32_t)(width*4), .rowsPerImage = (uint32_t)height }),
-                to_ptr( WGPUExtent3D{ (uint32_t)width, (uint32_t)height, 1 } )
-            );
-
-            WGPUTextureView texture_view = wgpuTextureCreateView( tex, nullptr );
-            WGPUBindGroup bind_group = wgpuDeviceCreateBindGroup( webgpu->device, to_ptr( WGPUBindGroupDescriptor{
-                .layout = webgpu->layout,
-                .entryCount = 3,
-                // The entries `.binding` matches what we wrote in the shader.
-                .entries = to_ptr<WGPUBindGroupEntry>({
-                    {
-                        .binding = 0,
-                        .buffer = webgpu->uniforms_buffer,
-                        .size = sizeof( Uniforms )
-                    },
-                    {
-                        .binding = 1,
-                        .sampler = webgpu->sampler,
-                    },
-                    {
-                        .binding = 2,
-                        .textureView = texture_view
-                    }
-                    })
-                } ) );
+            Resource resource = Texture(*webgpu, image_data, width, height);
 
             stbi_image_free(image_data);
 
-            return Resource(Texture(tex, bind_group, texture_view, width, height));
+            return resource;
         }
     };
 }
@@ -448,7 +452,7 @@ GraphicsManager::WebGPUState::WebGPUState(GLFWwindow* window) {
 
 GraphicsManager::GraphicsManager(
         Engine& engine,
-        const std::string& window_name,
+        const std::string_view& window_name,
         int window_width,
         int window_height
 ) : engine(engine) {
@@ -462,7 +466,7 @@ GraphicsManager::GraphicsManager(
     // We don't want GLFW to set up a graphics API.
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     // Create the window.
-    window = glfwCreateWindow(window_width, window_height, window_name.c_str(), nullptr, nullptr);
+    window = glfwCreateWindow(window_width, window_height, window_name.data(), nullptr, nullptr);
     if( !window )
     {
         const char* error;
@@ -477,18 +481,30 @@ GraphicsManager::GraphicsManager(
 
     webgpu = std::make_shared<WebGPUState>(window);
     engine.resources->register_resource_loader(std::make_unique<TextureLoader>(webgpu));
+
+    #define BLACK 0, 0, 0, 255
+    #define MAGENTA 255, 0, 255, 255
+    const u8 missing_texture_data[] = {
+        BLACK,   MAGENTA,
+        MAGENTA, BLACK
+    };
+
+    engine.resources->insert_resource(MISSING_TEXTURE_PATH, Texture(*webgpu, missing_texture_data, 2, 2));
 }
 
 bool GraphicsManager::window_should_close() {
     return glfwWindowShouldClose(window);
 }
 
-void GraphicsManager::draw(std::span<const Sprite> sprites) {
+void GraphicsManager::draw(std::span<Sprite> sprites) {
     glfwPollEvents();
 
     // == SETUP SPRITES
-    std::vector<Sprite> sorted_sprites(sprites.begin(), sprites.end());
-    std::sort(sorted_sprites.begin(), sorted_sprites.end(), [](Sprite s1, Sprite s2) { return s1.depth < s2.depth; });
+    std::vector<Sprite*> sorted_sprites;
+    sorted_sprites.reserve(sprites.size());
+    for (Sprite& s : sprites) sorted_sprites.push_back(&s);
+
+    std::sort(sorted_sprites.begin(), sorted_sprites.end(), [](Sprite* s1, Sprite* s2) { return s1->depth < s2->depth; });
 
     WGPUBuffer instance_buffer = wgpuDeviceCreateBuffer( webgpu->device, to_ptr( WGPUBufferDescriptor{
         .label = WGPUStringView("Instance Buffer", WGPU_STRLEN),
@@ -524,7 +540,7 @@ void GraphicsManager::draw(std::span<const Sprite> sprites) {
 
     // == SETUP & UPLOAD UNIFORMS
     // Start with an identity matrix.
-    Uniforms uniforms;
+    Uniforms uniforms{};
     uniforms.projection = mat4{1};
     // Scale x and y by 1/100.
     uniforms.projection[0][0] = uniforms.projection[1][1] = 1./100.;
@@ -544,13 +560,12 @@ void GraphicsManager::draw(std::span<const Sprite> sprites) {
 
     // draw the little guys
     int count = 0;
-    for (Sprite sprite : sorted_sprites) {
-        InstanceData instance;
-
-        auto maybe_tex = engine.resources->get_resource<Texture>(sprite.texture_path);
-        if (!maybe_tex.has_value()) { // TODO: fallback texture?
-            spdlog::error("Texture {} not found!", sprites[0].texture_path);
-            return;
+    for (Sprite* sprite : sorted_sprites) {
+        auto maybe_tex = engine.resources->get_resource<Texture>(sprite->texture_path);
+        if (!maybe_tex.has_value()) {
+            spdlog::error("Texture {} not found!", sprite->texture_path);
+            sprite->texture_path = MISSING_TEXTURE_PATH;
+            maybe_tex = engine.resources->get_resource<Texture>(MISSING_TEXTURE_PATH);
         }
 
         Texture* tex = maybe_tex.value();
@@ -561,15 +576,9 @@ void GraphicsManager::draw(std::span<const Sprite> sprites) {
             scale = vec2( 1.0, f32(tex->height)/tex->width );
         }
 
-        // spdlog::trace("rendering texture {} of size ({}, {}) at ({}, {}, {}) with scale ({}, {})", 
-        //         count,    
-        //         tex->width, tex->height,
-        //         sprite.position.x, sprite.position.y, sprite.depth,
-        //         scale.x * sprite.scale.x, scale.y * sprite.scale.y
-        // );
-        instance = InstanceData {
-            .translation = vec3(sprite.position.x, sprite.position.y, sprite.depth),
-            .scale = scale * sprite.scale
+        InstanceData instance {
+            .translation = vec3(sprite->position.x, sprite->position.y, sprite->depth),
+            .scale = scale * sprite->scale
         };
 
         wgpuQueueWriteBuffer( webgpu->queue, instance_buffer, count * sizeof(InstanceData), &instance, sizeof(InstanceData) );

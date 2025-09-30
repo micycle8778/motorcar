@@ -2,7 +2,6 @@
 
 #include <memory>
 #include <span>
-#include <string>
 #include <string_view>
 
 #include "types.h"
@@ -29,12 +28,12 @@ namespace motorcar {
         public:
             GraphicsManager(
                     Engine& engine, 
-                    const std::string& window_name, 
+                    const std::string_view& window_name, 
                     int window_width = DEFAULT_WIDTH, 
                     int window_height = DEFAULT_HEIGHT
             );
             bool window_should_close();
-            void draw(std::span<const Sprite> sprites);
+            void draw(std::span<Sprite> sprites);
 
             GraphicsManager(GraphicsManager&) = delete;
             GraphicsManager& operator=(GraphicsManager&) = delete;

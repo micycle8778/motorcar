@@ -71,6 +71,7 @@ struct GraphicsManager::WebGPUState {
 
     WebGPUState(GLFWwindow*);
 
+    void configure_surface(GLFWwindow* window);
     void setup(GLFWwindow*);
     void init_pipeline(GLFWwindow*);
 };
@@ -216,8 +217,6 @@ namespace {
                 &width, &height, &channels, 4
             );
 
-            spdlog::trace("{}, {}, {}, {}", image_data[0], image_data[1],image_data[2],image_data[3]);
-
             if (image_data == nullptr) {
                 spdlog::trace("Failed to load image file {}: {}", path.string(), stbi_failure_reason());
                 return {};
@@ -232,6 +231,19 @@ namespace {
             return resource;
         }
     };
+}
+
+void GraphicsManager::WebGPUState::configure_surface(GLFWwindow* window) {
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+    wgpuSurfaceConfigure(surface, to_ptr(WGPUSurfaceConfiguration{
+        .device = device,
+        .format = wgpuSurfaceGetPreferredFormat(surface, adapter),
+        .usage = WGPUTextureUsage_RenderAttachment,
+        .width = (uint32_t)width,
+        .height = (uint32_t)height,
+        .presentMode = WGPUPresentMode_Fifo // Explicitly set this because of a Dawn bug
+    }));
 }
 
 void GraphicsManager::WebGPUState::setup(GLFWwindow* window) {
@@ -311,16 +323,10 @@ void GraphicsManager::WebGPUState::init_pipeline(GLFWwindow* window) {
     wgpuQueueWriteBuffer(queue, vertex_buffer, 0, vertices, sizeof(vertices));
 
     // setup our framebuffer
-    int width, height;
-    glfwGetFramebufferSize( window, &width, &height );
-    wgpuSurfaceConfigure( surface, to_ptr( WGPUSurfaceConfiguration{
-        .device = device,
-        .format = wgpuSurfaceGetPreferredFormat( surface, adapter ),
-        .usage = WGPUTextureUsage_RenderAttachment,
-        .width = (uint32_t)width,
-        .height = (uint32_t)height,
-        .presentMode = WGPUPresentMode_Fifo // Explicitly set this because of a Dawn bug
-    }) );
+    configure_surface(window);
+    glfwSetFramebufferSizeCallback(window, [](GLFWwindow* window, int, int) {
+        ((Engine*)glfwGetWindowUserPointer(window))->gfx->webgpu->configure_surface(window);
+    });
 
     // uniforms
     uniforms_buffer = wgpuDeviceCreateBuffer( device, to_ptr( WGPUBufferDescriptor{
@@ -477,7 +483,6 @@ GraphicsManager::GraphicsManager(
     }
     glfwSetWindowAspectRatio(window, window_width, window_height);
     glfwSetWindowUserPointer(window, &engine);
-    glfwWindowHint( GLFW_RESIZABLE, GLFW_FALSE );
 
     webgpu = std::make_shared<WebGPUState>(window);
     engine.resources->register_resource_loader(std::make_unique<TextureLoader>(webgpu));

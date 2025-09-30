@@ -101,6 +101,7 @@ namespace motorcar {
             #define KEY_KP_COND(num) if (new_s == ("KP" #num)) keycode = GLFW_KEY_KP_##num; else
             #define KEY_MODIFIER_COND(side, name) if (new_s == (#side #name)) keycode = GLFW_KEY_##side _ ##name; else
 
+            if (new_s == "SPACE") keycode = GLFW_KEY_SPACE; else
             KEY_F_COND(1);
             KEY_F_COND(2);
             KEY_F_COND(3);

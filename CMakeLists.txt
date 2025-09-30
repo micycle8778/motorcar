@@ -121,6 +121,7 @@ add_executable( helloworld demo/helloworld.cpp )
 set_target_properties( helloworld PROPERTIES CXX_STANDARD 20 )
 target_link_libraries( helloworld PRIVATE motorcar )
 target_copy_webgpu_binaries( helloworld )
+set_property(TARGET helloworld PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}") 
 add_custom_target( run_helloworld helloworld USES_TERMINAL WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} )
 
 # asan + wall + werror

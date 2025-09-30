@@ -31,6 +31,12 @@ int main(int argc, char* argv[]) {
             .depth = .2,
             .texture_path = "michael-day.png"
         },
+        motorcar::Sprite {
+            .position = motorcar::vec2(-25, -20),
+            .scale = motorcar::vec2(32),
+            .depth = .2,
+            .texture_path = "insect.png"
+        },
     };
 
     motorcar::Engine e("helloworld");
@@ -46,7 +52,7 @@ int main(int argc, char* argv[]) {
             spdlog::debug("respects paid");
         }
 
-        if (e.input->is_key_released_this_frame(' ')) {
+        if (e.input->is_key_released_this_frame("space")) {
             release_count++;
             spdlog::debug("space released {} times", release_count);
             e.sound->play_sound("doo-doo.mp3");

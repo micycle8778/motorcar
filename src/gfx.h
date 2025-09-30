@@ -9,8 +9,8 @@
 struct GLFWwindow;
 
 namespace motorcar {
-    const int DEFAULT_WIDTH  = 1280;
-    const int DEFAULT_HEIGHT = 720;
+    const int DEFAULT_WIDTH  = 1280/2;
+    const int DEFAULT_HEIGHT = 720/2;
 
     struct Engine;
 

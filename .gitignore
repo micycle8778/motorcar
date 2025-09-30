@@ -9,3 +9,4 @@ build/*
 # ide shit
 .vscode/*
 .vs/*
+!.vscode/launch.json

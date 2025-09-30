@@ -1,9 +1,11 @@
-#include "types.h"
+#include <vector>
+
 #include <spdlog/spdlog.h>
+
 #include <engine.h>
 #include <sound.h>
 #include <input.h>
-#include <vector>
+#include <types.h>
 
 int main(int argc, char* argv[]) {
     spdlog::set_level(spdlog::level::trace);

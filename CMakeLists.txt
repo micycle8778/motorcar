@@ -103,6 +103,26 @@ FetchContent_Declare(
     )
 FetchContent_MakeAvailable( glm )
 
+# lua
+FetchContent_Declare(
+    lua
+    GIT_REPOSITORY https://github.com/walterschell/Lua
+    GIT_TAG 504ef66d500fa1fb4f1684b6617b01342eee704a
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE
+    )
+set(LUA_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable( lua )
+
+FetchContent_Declare(
+    sol2
+    GIT_REPOSITORY https://github.com/yig/sol2
+    GIT_TAG cs425-2025
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE
+    )
+FetchContent_MakeAvailable( sol2 )
+
 ## Declare the engine library
 add_library( motorcar STATIC
     src/engine.cpp
@@ -110,12 +130,13 @@ add_library( motorcar STATIC
     src/gfx.cpp
     src/sound.cpp
     src/resources.cpp
+    src/scripts.cpp
 )
 set_target_properties( motorcar PROPERTIES CXX_STANDARD 20 )
 ## Declare our engine's header path.
 ## This allows targets that depend on the engine to #include them.
 target_include_directories( motorcar PUBLIC src )
-target_link_libraries( motorcar PUBLIC glfw soloud spdlog::spdlog webgpu glfw3webgpu glm stb )
+target_link_libraries( motorcar PUBLIC glfw soloud spdlog::spdlog webgpu glfw3webgpu glm stb sol2 lua_static )
 
 add_executable( helloworld demo/helloworld.cpp )
 set_target_properties( helloworld PROPERTIES CXX_STANDARD 20 )

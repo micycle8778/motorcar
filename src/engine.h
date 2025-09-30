@@ -13,12 +13,14 @@ namespace motorcar {
     class GraphicsManager;
     class InputManager;
     class SoundManager;
+    class ScriptManager;
 
     struct Engine {
         std::shared_ptr<SoundManager> sound;
         std::shared_ptr<ResourceManager> resources;
         std::shared_ptr<GraphicsManager> gfx;
         std::shared_ptr<InputManager> input;
+        std::shared_ptr<ScriptManager> scripts;
 
         double time_simulated_secs = 0.;
         bool keep_running = true;

@@ -13,6 +13,19 @@
 using namespace motorcar;
 
 namespace {
+    struct CallInfo {
+        const char* filename;
+        int lineno;
+    }; 
+
+    std::optional<CallInfo> get_debug_info(sol::state& lua) {
+        lua_Debug ld;
+        if (!lua_getstack(lua.lua_state(), 1, &ld)) return {};
+        if (!lua_getinfo(lua.lua_state(), "Sl", &ld)) return {};
+
+        return CallInfo { .filename = ld.source, .lineno = ld.currentline };
+    }
+
     class ScriptLoader : public ILoadResources {
         sol::state& lua;
 
@@ -55,6 +68,20 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     INPUT_METHOD(is_key_released_this_frame);
     #undef INPUT_METHOD
 
+    sol::table log_namespace = lua["Log"].force();
+    #define LOG_FN(log_level) \
+    log_namespace.set_function(#log_level, [&](std::string message) {\
+        auto call_info = get_debug_info(lua);\
+        spdlog::log_level("[{}:{}] {}", call_info->filename, call_info->lineno, message);\
+    })
+    LOG_FN(trace);
+    LOG_FN(debug);
+    LOG_FN(warn);
+    LOG_FN(error);
+    #undef LOG_FN
+
+    // log_namespace.set_function(#name, [&](std::string key_name))
+
     sol::table sound_namespace = lua["Sound"].force();
     sound_namespace.set_function("play_sound", [&](std::string sound_name) {
         engine.sound->play_sound(sound_name);
@@ -66,6 +93,15 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     });
 
     sol::table engine_namespace = lua["Engine"].force();
+    engine_namespace.set_function("test", [&]() {
+        auto debug_info = get_debug_info(lua);
+        
+        if (debug_info.has_value()) {
+            spdlog::trace("filename: {}, lineno: {}", debug_info->filename, debug_info->lineno);
+        } else {
+            spdlog::error("couldn't get debug info???");
+        }
+    });
     engine_namespace.set_function("quit", [&]() {
         engine.keep_running = false;
     });

@@ -1,3 +1,5 @@
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
+
 #include <soloud.h>
 #include <soloud_wav.h>
 #include <spdlog/spdlog.h>
@@ -26,13 +28,13 @@ namespace {
     };
     */
     struct SoLoudWavLoader : public ILoadResources {
-        std::optional<Resource> load_resource(const std::filesystem::path& path, std::ifstream& file_stream) override {
+        std::optional<Resource> load_resource(const std::filesystem::path&, std::ifstream& file_stream, std::string_view resource_path) override {
             auto data = get_data_from_file_stream(file_stream);
             SoLoud::Wav sound;
-            auto error = sound.loadMem(data.data(), data.size(), false, false);
+            auto error = sound.loadMem(data.data(), (int)data.size(), false, false);
 
             if (error) {
-                spdlog::trace("Failed to load audio file {}. (errorno: {})", path.string(), error);
+                SPDLOG_TRACE("Failed to load audio file {}. (errorno: {})", resource_path, error);
                 return {};
             } else {
                 return std::move(sound);
@@ -46,12 +48,12 @@ SoundManager::SoundManager(Engine& engine) : engine(engine) {
     engine.resources->register_resource_loader(std::make_unique<SoLoudWavLoader>());
 }
 
-void SoundManager::play_sound(std::string_view filename) {
-    auto sound = engine.resources->get_resource<SoLoud::Wav>(filename);
+void SoundManager::play_sound(std::string_view path) {
+    auto sound = engine.resources->get_resource<SoLoud::Wav>(path);
     if (sound.has_value()) {
         soloud.play(**sound);
     } else {
-        spdlog::error("Could not load sound '{}'", filename);
+        spdlog::error("Could not load sound '{}'", path);
     }
 }
 

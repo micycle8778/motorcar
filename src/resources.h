@@ -6,7 +6,7 @@
 #include <vector>
 #include <type_traits>
 
-#include "spdlog/spdlog.h"
+#include <spdlog/spdlog.h>
 
 #include "types.h"
 
@@ -55,7 +55,7 @@ namespace motorcar {
     class ILoadResources {
         public:
             static std::vector<u8> get_data_from_file_stream(std::ifstream& file_stream);
-            virtual std::optional<Resource> load_resource(const std::filesystem::path& path, std::ifstream& file_stream) = 0;
+            virtual std::optional<Resource> load_resource(const std::filesystem::path& path, std::ifstream& file_stream, std::string_view resource_path) = 0;
 
             virtual ~ILoadResources() = default;
     };
@@ -69,9 +69,9 @@ namespace motorcar {
             static std::filesystem::path convert_path(std::string_view path);
 
             template <typename T>
-            std::optional<T*> get_resource(std::string_view filename);
-            bool load_resource(std::string_view filename);
-            void insert_resource(std::string_view filename, Resource&& resource);
+            std::optional<T*> get_resource(std::string_view resource_path);
+            bool load_resource(std::string_view resource_path);
+            void insert_resource(std::string_view resource_path, Resource&& resource);
     };
 }
 
@@ -90,7 +90,8 @@ std::optional<T*> motorcar::ResourceManager::get_resource(std::string_view filen
         } else {
             return {};
         }
-    } else {
+    } else [[unlikely]] {
         // unreachable
+        std::abort();
     }
 }

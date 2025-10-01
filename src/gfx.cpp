@@ -1,3 +1,5 @@
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
+
 #include <ranges>
 #include <algorithm>
 #include <cstdlib>
@@ -208,7 +210,7 @@ namespace {
 
         TextureLoader(std::shared_ptr<GraphicsManager::WebGPUState> webgpu) : webgpu(webgpu) {}
 
-        std::optional<Resource> load_resource(const std::filesystem::path& path, std::ifstream& file_stream) override {
+        std::optional<Resource> load_resource(const std::filesystem::path&, std::ifstream& file_stream, std::string_view resource_path) override {
             auto file_data = get_data_from_file_stream(file_stream);
             int width, height, channels;
             unsigned char* image_data = stbi_load_from_memory(
@@ -218,11 +220,11 @@ namespace {
             );
 
             if (image_data == nullptr) {
-                spdlog::trace("Failed to load image file {}: {}", path.string(), stbi_failure_reason());
+                SPDLOG_TRACE("Failed to load image file {}: {}", resource_path, stbi_failure_reason());
                 return {};
             }
 
-            spdlog::trace("Loaded image file {}. Texture size: {}x{}", path.string(), width, height);
+            SPDLOG_TRACE("Loaded image file {}. Texture size: {}x{}", resource_path, width, height);
 
             Resource resource = Texture(*webgpu, image_data, width, height);
 
@@ -259,7 +261,7 @@ void GraphicsManager::WebGPUState::setup(GLFWwindow* window) {
             .mode = WGPUCallbackMode_AllowSpontaneous,
             .callback = []( WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView message, void* adapter_ptr, void* ) {
                 if( status != WGPURequestAdapterStatus_Success ) {
-                    spdlog::error("Failed to get a WebGPU adapter: {}", std::string_view(message.data, message.length));
+                    SPDLOG_ERROR("Failed to get a WebGPU adapter: {}", std::string_view(message.data, message.length));
                     glfwTerminate();
                 }
 
@@ -276,15 +278,15 @@ void GraphicsManager::WebGPUState::setup(GLFWwindow* window) {
         adapter,
         to_ptr(WGPUDeviceDescriptor{
             // Add an error callback for more debug info
-            .uncapturedErrorCallbackInfo = { .callback = []( WGPUDevice const* device, WGPUErrorType type, WGPUStringView message, void*, void* ) {
-                spdlog::error("WebGPU uncaptured error type {} with message: {}", int(type), std::string_view(message.data, message.length));
+            .uncapturedErrorCallbackInfo = { .callback = []( WGPUDevice const*, WGPUErrorType type, WGPUStringView message, void*, void* ) {
+                SPDLOG_ERROR("WebGPU uncaptured error type {} with message: {}", int(type), std::string_view(message.data, message.length));
             }}
         }),
         WGPURequestDeviceCallbackInfo{
             .mode = WGPUCallbackMode_AllowSpontaneous,
             .callback = [](WGPURequestDeviceStatus status, WGPUDevice device, WGPUStringView message, void* device_ptr, void*) {
                 if(status != WGPURequestDeviceStatus_Success) {
-                    spdlog::error("Failed to get a WebGPU device: {}", std::string_view(message.data, message.length));
+                    SPDLOG_ERROR("Failed to get a WebGPU device: {}", std::string_view(message.data, message.length));
                     glfwTerminate();
                 }
                 
@@ -465,7 +467,7 @@ GraphicsManager::GraphicsManager(
     if (!glfwInit()) {
         const char* error;
         glfwGetError(&error);
-        spdlog::error("Failed to initialize GLFW: {}", error);
+        SPDLOG_ERROR("Failed to initialize GLFW: {}", error);
         std::abort();
     }
 
@@ -478,7 +480,7 @@ GraphicsManager::GraphicsManager(
         const char* error;
         glfwGetError(&error);
         glfwTerminate();
-        spdlog::error("Failed to create GLFW window: {}", error);
+        SPDLOG_ERROR("Failed to create GLFW window: {}", error);
         std::abort();
     }
     glfwSetWindowAspectRatio(window, window_width, window_height);
@@ -548,7 +550,7 @@ void GraphicsManager::draw(std::span<Sprite> sprites) {
     Uniforms uniforms{};
     uniforms.projection = mat4{1};
     // Scale x and y by 1/100.
-    uniforms.projection[0][0] = uniforms.projection[1][1] = 1./100.;
+    uniforms.projection[0][0] = uniforms.projection[1][1] = 1.f/100.f;
     // Scale the long edge by an additional 1/(long/short) = short/long.
 
     int width, height;
@@ -568,7 +570,7 @@ void GraphicsManager::draw(std::span<Sprite> sprites) {
     for (Sprite* sprite : sorted_sprites) {
         auto maybe_tex = engine.resources->get_resource<Texture>(sprite->texture_path);
         if (!maybe_tex.has_value()) {
-            spdlog::error("Texture {} not found!", sprite->texture_path);
+            SPDLOG_ERROR("Texture {} not found!", sprite->texture_path);
             sprite->texture_path = MISSING_TEXTURE_PATH;
             maybe_tex = engine.resources->get_resource<Texture>(MISSING_TEXTURE_PATH);
         }

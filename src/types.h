@@ -32,6 +32,6 @@ namespace motorcar {
         vec2 position = vec2(0);
         vec2 scale = vec2(1);
         f32 depth = 0.;
-        std::string_view texture_path;
+        std::string texture_path;
     };
 }

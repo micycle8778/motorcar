@@ -6,6 +6,7 @@
 #include <sound.h>
 #include <input.h>
 #include <types.h>
+#include <scripts.h>
 
 int main(int argc, char* argv[]) {
     spdlog::set_level(spdlog::level::trace);
@@ -13,7 +14,7 @@ int main(int argc, char* argv[]) {
     int press_count = 0;
     int release_count = 0;
 
-    std::vector<motorcar::Sprite> sprites = {
+    motorcar::Engine e("helloworld", {
         motorcar::Sprite {
             .position = motorcar::vec2(0),
             .scale = motorcar::vec2(25),
@@ -39,31 +40,32 @@ int main(int argc, char* argv[]) {
             .depth = .2,
             .texture_path = "insect.png"
         },
-    };
-
-    motorcar::Engine e("helloworld");
+    });
     e.run([&]() {
-        sprites[0].position.x += 0.1;
+        e.scripts->run_script("hello.lua");
 
-        if (e.input->is_key_pressed_this_frame('`')) {
-            press_count++;
-            spdlog::debug("tilde pressed {} times", press_count);
-        }
+        // e.sprites[0].position.x += 0.1;
 
-        if (e.input->is_key_repeated_this_frame('f')) {
-            spdlog::debug("respects paid");
-        }
+        // if (e.input->is_key_pressed_this_frame('`')) {
+        //     press_count++;
+        //     SPDLOG_DEBUG("tilde pressed {} times", press_count);
+        // }
 
-        if (e.input->is_key_released_this_frame("space")) {
-            release_count++;
-            spdlog::debug("space released {} times", release_count);
-            e.sound->play_sound("doo-doo.mp3");
-        }
+        // if (e.input->is_key_repeated_this_frame('f')) {
+        //     SPDLOG_DEBUG("respects paid");
+        // }
 
-        if (e.input->is_key_held_down("f3")) {
-            spdlog::debug("f3");
-        }
-    }, sprites);
+        // if (e.input->is_key_released_this_frame("space")) {
+        //     release_count++;
+        //     SPDLOG_DEBUG("space released {} times", release_count);
+        //     e.sound->play_sound("doo-doo.mp3");
+        //     e.scripts->run_script("hello.lua");
+        // }
+
+        // if (e.input->is_key_held_down("f3")) {
+        //     SPDLOG_DEBUG("f3");
+        // }
+    });
 
     return 0;
 }

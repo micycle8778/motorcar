@@ -12,6 +12,6 @@ namespace motorcar {
             SoundManager(Engine& engine);
             ~SoundManager();
 
-            void play_sound(std::string_view filename);
+            void play_sound(std::string_view path);
     };
 }

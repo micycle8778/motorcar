@@ -106,7 +106,7 @@ namespace motorcar {
             sol::object get_component_as_lua_object(Entity e, sol::state& lua);
             void remove_component(Entity e);
 
-            // maybe we'll need them, maybe we won't ¯\_(ツ)_/¯
+            // maybe we'll need them, maybe we won't ¯\_(a)_/¯
             ComponentStorage(ComponentStorage&) = delete;
             ComponentStorage& operator=(ComponentStorage&) = delete;
 
@@ -135,9 +135,93 @@ namespace motorcar {
             ~ComponentStorage();
     };
 
-    class ECSWorld {
-        static std::vector<std::any> static_storage;
+    // an aggregate bump allocator
+    class Ocean {
+        struct Pool {
+            size_t capacity;
+            void* ptr;
+            void* ending_pointer;
 
+            Pool(size_t capacity) : 
+                capacity(capacity), 
+                ptr(malloc(capacity)),
+                ending_pointer((void*)((size_t)ptr + capacity))
+            {}
+        };
+
+        // one MiB
+        static const size_t MINIMUM_POOL_SIZE = 1 << 20;
+
+        std::vector<Pool> pools;
+        size_t current_pool = 0;
+
+        public:
+            template <typename T>
+            struct Allocator {
+                Ocean& ocean;
+
+                using value_type = T;
+
+                Allocator(Ocean& ocean) : ocean(ocean) {}
+
+                // TODO: alignment
+                T* allocate(std::size_t n) {
+                    size_t bytes_needed = sizeof(T) * n;
+
+                    // lets find bytes_needed
+                    while (ocean.current_pool < ocean.pools.size()) {
+                        Pool& pool = ocean.pools[ocean.current_pool];
+                        size_t bytes_available = (size_t)pool.ending_pointer - (size_t)pool.ptr;
+
+                        // align = 4
+                        // ptr = 0 => (4 - (0 % 4)) % 4 = (4 - 0) % 4 = 4 % 4 = 0
+                        // ptr = 1 => (4 - (1 % 4)) % 4 = (4 - 1) % 4 = 3 % 4 = 3
+                        // ptr = 2 => (4 - (2 % 4)) % 4 = (4 - 2) % 4 = 2 % 4 = 2
+                        // ptr = 3 => (4 - (3 % 4)) % 4 = (4 - 3) % 4 = 1 % 4 = 1
+                        size_t padding_needed = (alignof(T) - ((size_t)pool.ptr % alignof(T))) % alignof(T);
+
+                        // not enough memory! check the next pool!
+                        if (bytes_available < bytes_needed + padding_needed) {
+                            ocean.current_pool++;
+                            continue;
+                        } else {
+                            void* ptr = (void*)((size_t)pool.ptr + padding_needed);
+                            pool.ptr = (void*)((size_t)ptr + bytes_needed); 
+                            return (T*)ptr;
+                        }
+                    }
+                    
+                    // we're out of memory! get more!
+                    ocean.pools.emplace_back(std::max(bytes_needed, MINIMUM_POOL_SIZE));
+
+                    void* ptr = ocean.pools.back().ptr;
+                    ocean.pools.back().ptr = (void*)((size_t)ptr + bytes_needed);
+
+                    return (T*)ptr;
+                }
+
+                void deallocate(T* p, std::size_t n) noexcept {
+                    /* no-op ;) */
+                }
+            };
+
+            void reset() {
+                current_pool = 0;
+
+                for (Pool& pool : pools) {
+                    pool.ptr = (void*)((size_t)pool.ending_pointer - pool.capacity);
+                }
+            }
+
+            ~Ocean() {
+                for (Pool& pool : pools) {
+                    pool.ptr = (void*)((size_t)pool.ending_pointer - pool.capacity);
+                    free(pool.ptr);
+                }
+            }
+    };
+
+    class ECSWorld {
         template <typename ...T>
         friend class Query;
 
@@ -149,6 +233,8 @@ namespace motorcar {
         // TODO: systems
 
         public:
+            static Ocean ocean;
+
             Entity new_entity() {
                 return next_entity++;
             }
@@ -278,16 +364,22 @@ namespace motorcar {
                         });
                 }
             } else {
-                using V = std::vector<std::pair<Entity, std::tuple<First*>>>;
+                using Pair = std::pair<Entity, std::tuple<First*>>;
+                // using V = std::vector<Pair, Ocean::Allocator<Pair>>;
+
                 ComponentStorage& cs = world.storage.at(typeid(First));
-                V v;
-                v.reserve(cs.len);
+                // V v(Ocean::Allocator(world.ocean));
+                Pair* pairs = Ocean::Allocator<Pair>(world.ocean).allocate(cs.len);
+
+                // v.reserve(cs.len);
                 for (int idx = 0; idx < cs.len; idx++) {
-                    v.push_back(std::make_pair(cs.entities[idx], std::make_tuple((First*)cs.compute_pointer(idx))));
+                    pairs[idx] = std::make_pair(cs.entities[idx], std::make_tuple((First*)cs.compute_pointer(idx)));
+                    // v.push_back(std::make_pair(cs.entities[idx], std::make_tuple((First*)cs.compute_pointer(idx))));
                 }
 
-                ECSWorld::static_storage.emplace_back(std::move(v));
-                return std::any_cast<V&>(ECSWorld::static_storage.back());
+                return std::ranges::subrange(pairs, pairs + cs.len);
+                // ECSWorld::static_storage.emplace_back(std::move(v));
+                // return std::any_cast<V&>(ECSWorld::static_storage.back());
             }
         }
 

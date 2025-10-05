@@ -39,14 +39,6 @@ struct motorcar::ComponentTypeTrait<Velocity> {
     constexpr static std::string_view component_name = "velocity";
 };
 
-// number of 2d vectors to translate
-#define NUM_VECS 20000
-// number of times to translate the vectors
-// think of this as the number of ticks run by the engine
-#define INNER_RUNS 1000
-// number of times the benchmark is run
-#define OUTER_RUNS 5
-
 template <typename Func>
 void bench(const Func func) {
     auto start = std::chrono::steady_clock::now();
@@ -61,7 +53,7 @@ int main(void) {
     spdlog::set_level(spdlog::level::trace);
 
     const size_t NUM_ENTITIES = 100;
-    const size_t TICKS = 1000000;
+    const size_t TICKS = 1'000'000;
     const size_t BENCHES = 5;
 
     float sum = 0.;
@@ -100,6 +92,8 @@ int main(void) {
                 sum += p->x;
                 sum += p->y;
             }
+
+            ecs.ocean.reset();
         }
         auto end = std::chrono::steady_clock::now();
 

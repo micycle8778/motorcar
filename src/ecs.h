@@ -1,4 +1,6 @@
+#include <cstddef>
 #include <cstdlib>
+#include <iterator>
 #include <optional>
 #include <tuple>
 #include <typeindex>
@@ -38,7 +40,7 @@ namespace motorcar {
         void (*ctor_from_sol_object)(void* dest, sol::object src) = nullptr;
         sol::object (*get_sol_object)(void*, sol::state&) = nullptr;
 
-        void* compute_pointer(size_t index) { return (void*)((size_t)blob + (index * stride)); }
+        void* compute_pointer(size_t index) const { return (void*)((size_t)blob + (index * stride)); }
         ComponentStorage(
                 const std::string_view component_name,
                 const std::type_info* type
@@ -46,56 +48,82 @@ namespace motorcar {
         {}
         public:
             template <typename T>
-            class ComponentStorageView;
-
-            template <typename T>
-            class iterator {
-                friend ComponentStorage;
-                friend ComponentStorageView<T>;
-
-                ComponentStorage& cs;
+            class Iterator {
+                ComponentStorage* cs;
                 size_t index;
 
-                iterator(ComponentStorage& cs, size_t index) : cs(cs), index(index) {
-                };
                 public:
-                    bool operator==(iterator<T>& other) {
-                        return &other.cs == &cs && other.index == index;
-                    }
+                    using difference_type = int;
 
-                    bool operator!=(iterator<T>& other) {
-                        return &other.cs != &cs || other.index != index;
-                    }
+                    Iterator() = default;
+                    Iterator(ComponentStorage* cs, size_t index) : cs(cs), index(index) {}
 
-                    std::pair<Entity, T*> operator*() {
+                    std::pair<Entity, T*> operator*() const {
+                        if (cs == nullptr) [[unlikely]] {
+                            SPDLOG_ERROR("cs == nullptr");
+                            std::abort();
+                        }
+
                         return std::make_pair(
-                                cs.entities[index],
-                                std::make_tuple((T*)cs.compute_pointer(index))
+                                cs->entities[index],
+                                cs->get_component<T>(cs->entities[index])
                         );
                     }
 
-                    iterator& operator++() {
-                        ++index;
-                        return *this;
+                    Iterator<T>& operator++();
+                    void operator++(int) {
+                        index++;
+                    }
+
+                    bool operator!=(const Iterator<T>& other) const {
+                        return 
+                            cs != other.cs ||
+                            index != other.index;
+                    }
+
+                    bool operator==(const Iterator<T>& other) const {
+                        return 
+                            cs == other.cs &&
+                            index == other.index;
                     }
             };
+
+            // template<typename T>
+            // struct std::iterator_traits<Iterator<T>> {
+            //     using difference_type = int;
+            // };
 
             template <typename T>
-            class ComponentStorageView : public std::ranges::view_interface<ComponentStorageView<T>> {
-                ComponentStorage* cs;
+            class View : public std::ranges::view_base {
+                ComponentStorage* cs = nullptr;
 
                 public:
-                    ComponentStorageView() = default;
-                    explicit ComponentStorageView(ComponentStorage& cs) : cs(&cs) {}
+                    View() = default;
+                    View(ComponentStorage& cs) : cs(&cs) {}
 
-                    iterator<T> begin() const {
-                        return iterator<T>(*cs, 0);
+                    Iterator<T> begin() { 
+                        if (cs == nullptr) [[unlikely]] {
+                            SPDLOG_ERROR("cs == nullptr");
+                            std::abort();
+                        }
+                        return Iterator<T>(cs, 0);
                     }
 
-                    iterator<T> end() const {
-                        return iterator<T>(*cs, cs->len);
+                    Iterator<T> end() { 
+                        if (cs == nullptr) [[unlikely]] {
+                            SPDLOG_ERROR("cs == nullptr");
+                            std::abort();
+                        }
+                        return Iterator<T>(cs, cs->len);
                     }
             };
+
+            static_assert(std::movable<Iterator<int>>);
+            static_assert(std::weakly_incrementable<Iterator<int>>);
+            static_assert(std::input_or_output_iterator<Iterator<int>>);
+            static_assert(std::ranges::range<View<int>>);
+            static_assert(std::ranges::view<View<int>>);
+            static_assert(std::ranges::viewable_range<View<int>>);
 
             template <typename T>
             static ComponentStorage create(size_t initial_capacity) {
@@ -154,13 +182,13 @@ namespace motorcar {
             void remove_component(Entity e);
 
             template <typename T>
-            ComponentStorageView<T> view() {
+            View<T> view() {
                 if (type != &typeid(T)) {
                     SPDLOG_ERROR("ComponentStorage::view called with wrong type.");
                     std::abort();
                 }
 
-                return ComponentStorageView<T>(*this);
+                return View<T>(*this);
             }
 
             // maybe we'll need them, maybe we won't ¯\_(ツ)_/¯
@@ -207,15 +235,21 @@ namespace motorcar {
                 template <typename First, typename ...Other>
                 static auto internal(ECSWorld& world) {
                     if constexpr (sizeof...(Other) > 0) {
-                        auto maybe_it = internal<Other...>(world);
+                        auto iter = internal<Other...>(world);
 
                         if constexpr (std::is_same_v<Entity, First>) {
-                            return
-                                std::views::filter(maybe_it.value(), [&](auto p) { 
+                            return iter |
+                                std::views::transform([&](auto& p) { 
+                                    Entity e = std::get<0>(p);
+                                    return std::make_pair(e, std::tuple_cat(e, std::get<1>(p)));
+                                });
+                        } else {
+                            return iter |
+                                std::views::filter([&](auto& p) { 
                                     Entity e = std::get<0>(p); 
                                     return world.has_component<First>(e); 
                                 }) |
-                                std::views::transform([&](auto p) { 
+                                std::views::transform([&](auto& p) { 
                                     Entity e = std::get<0>(p);
                                     auto t = std::tuple_cat(
                                         std::make_tuple(world.get_component<First>(e)),
@@ -224,19 +258,13 @@ namespace motorcar {
 
                                     return std::make_pair(e, t);
                                 });
-                        } else {
-                            return
-                                std::views::transform(maybe_it.value(), [&](auto p) { 
-                                    Entity e = std::get<0>(p);
-                                    return std::make_pair(e, std::tuple_cat(e, std::get<1>(p)));
-                                });
                         }
                     } else {
                         if (!world.storage.contains(typeid(First))) {
                             world.register_component<First>();
                         } 
 
-                        return std::optional(world.storage.at(typeid(First)).view<First>());
+                        return world.storage.at(typeid(First)).view<First>();
                     }
                 }
 

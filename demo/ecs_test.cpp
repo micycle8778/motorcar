@@ -60,15 +60,14 @@ void bench(const Func func) {
 int main(void) {
     spdlog::set_level(spdlog::level::trace);
 
-    const size_t NUM_ENTITIES = 10000;
-    const size_t TICKS = 1000;
+    const size_t NUM_ENTITIES = 100;
+    const size_t TICKS = 1000000;
     const size_t BENCHES = 5;
 
     float sum = 0.;
 
     for (int bench = 0; bench < BENCHES; bench++) {
         motorcar::ECSWorld ecs;
-
 
         for (int idx = 0; idx < NUM_ENTITIES; idx++) {
             motorcar::Entity e;

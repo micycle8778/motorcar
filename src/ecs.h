@@ -1,7 +1,6 @@
 #include <any>
 #include <cstddef>
 #include <cstdlib>
-#include <iterator>
 #include <optional>
 #include <tuple>
 #include <typeindex>
@@ -51,84 +50,6 @@ namespace motorcar {
         ) : component_name(component_name), type(type)
         {}
         public:
-            template <typename T>
-            class Iterator {
-                ComponentStorage* cs;
-                size_t index;
-
-                public:
-                    using difference_type = int;
-
-                    Iterator() = default;
-                    Iterator(ComponentStorage* cs, size_t index) : cs(cs), index(index) {}
-
-                    std::pair<Entity, T*> operator*() const {
-                        if (cs == nullptr) [[unlikely]] {
-                            SPDLOG_ERROR("cs == nullptr");
-                            std::abort();
-                        }
-
-                        return std::make_pair(
-                                cs->entities[index],
-                                cs->get_component<T>(cs->entities[index])
-                        );
-                    }
-
-                    Iterator<T>& operator++();
-                    void operator++(int) {
-                        index++;
-                    }
-
-                    bool operator!=(const Iterator<T>& other) const {
-                        return 
-                            cs != other.cs ||
-                            index != other.index;
-                    }
-
-                    bool operator==(const Iterator<T>& other) const {
-                        return 
-                            cs == other.cs &&
-                            index == other.index;
-                    }
-            };
-
-            // template<typename T>
-            // struct std::iterator_traits<Iterator<T>> {
-            //     using difference_type = int;
-            // };
-
-            template <typename T>
-            class View : public std::ranges::view_base {
-                ComponentStorage* cs = nullptr;
-
-                public:
-                    View() = default;
-                    View(ComponentStorage& cs) : cs(&cs) {}
-
-                    Iterator<T> begin() { 
-                        if (cs == nullptr) [[unlikely]] {
-                            SPDLOG_ERROR("cs == nullptr");
-                            std::abort();
-                        }
-                        return Iterator<T>(cs, 0);
-                    }
-
-                    Iterator<T> end() { 
-                        if (cs == nullptr) [[unlikely]] {
-                            SPDLOG_ERROR("cs == nullptr");
-                            std::abort();
-                        }
-                        return Iterator<T>(cs, cs->len);
-                    }
-            };
-
-            static_assert(std::movable<Iterator<int>>);
-            static_assert(std::weakly_incrementable<Iterator<int>>);
-            static_assert(std::input_or_output_iterator<Iterator<int>>);
-            static_assert(std::ranges::range<View<int>>);
-            static_assert(std::ranges::view<View<int>>);
-            static_assert(std::ranges::viewable_range<View<int>>);
-
             template <typename T>
             static ComponentStorage create(size_t initial_capacity) {
                 static_assert(ComponentTypeTrait<T>::value);
@@ -184,16 +105,6 @@ namespace motorcar {
             bool has_component(Entity e);
             sol::object get_component_as_lua_object(Entity e, sol::state& lua);
             void remove_component(Entity e);
-
-            template <typename T>
-            View<T> view() {
-                if (type != &typeid(T)) {
-                    SPDLOG_ERROR("ComponentStorage::view called with wrong type.");
-                    std::abort();
-                }
-
-                return View<T>(*this);
-            }
 
             // maybe we'll need them, maybe we won't ¯\_(ツ)_/¯
             ComponentStorage(ComponentStorage&) = delete;

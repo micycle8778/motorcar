@@ -1,3 +1,4 @@
+#include <any>
 #include <cstddef>
 #include <cstdlib>
 #include <iterator>
@@ -24,6 +25,9 @@ namespace motorcar {
     };
 
     class ComponentStorage {
+        template <typename ...T>
+        friend class Query;
+
         const std::string_view component_name = "";
         const std::type_info* type;
 
@@ -221,6 +225,10 @@ namespace motorcar {
     };
 
     class ECSWorld {
+        static std::vector<std::any> static_storage;
+
+        template <typename ...T>
+        friend class Query;
 
         std::unordered_map<std::type_index, ComponentStorage> storage;
         std::unordered_map<std::string, std::type_index> component_type_indices;
@@ -230,50 +238,6 @@ namespace motorcar {
         // TODO: systems
 
         public:
-            template <typename ...Components>
-            class Query {
-                template <typename First, typename ...Other>
-                static auto internal(ECSWorld& world) {
-                    if constexpr (sizeof...(Other) > 0) {
-                        auto iter = internal<Other...>(world);
-
-                        if constexpr (std::is_same_v<Entity, First>) {
-                            return iter |
-                                std::views::transform([&](auto& p) { 
-                                    Entity e = std::get<0>(p);
-                                    return std::make_pair(e, std::tuple_cat(e, std::get<1>(p)));
-                                });
-                        } else {
-                            return iter |
-                                std::views::filter([&](auto& p) { 
-                                    Entity e = std::get<0>(p); 
-                                    return world.has_component<First>(e); 
-                                }) |
-                                std::views::transform([&](auto& p) { 
-                                    Entity e = std::get<0>(p);
-                                    auto t = std::tuple_cat(
-                                        std::make_tuple(world.get_component<First>(e)),
-                                        std::get<1>(p)
-                                    );
-
-                                    return std::make_pair(e, t);
-                                });
-                        }
-                    } else {
-                        if (!world.storage.contains(typeid(First))) {
-                            world.register_component<First>();
-                        } 
-
-                        return world.storage.at(typeid(First)).view<First>();
-                    }
-                }
-
-                public:
-                    static auto it(ECSWorld& world) {
-                        return std::views::transform(internal<Components...>(world), [](auto p) { return std::get<1>(p); });
-                    }
-            };
-
             Entity new_entity() {
                 return next_entity++;
             }
@@ -303,6 +267,18 @@ namespace motorcar {
 
                 storage.at(typeid(T)).emplace_component<T>(e, args...);
             }
+
+            // template <typename Component>
+            // void insert_component(Entity e, Component&& c) {
+            //     using RealType = std::remove_reference_t<Component>;
+            //
+            //     if (!storage.contains(typeid(RealType))) {
+            //         register_component<RealType>();
+            //     }
+            //
+            //     SPDLOG_TRACE("insert_component");
+            //     storage.at(typeid(RealType)).emplace_component<RealType>(e, c);
+            // }
 
             void insert_lua_component(Entity e, std::string_view component_name, sol::object object) {
                 std::string key = { component_name.begin(), component_name.end() };
@@ -363,6 +339,52 @@ namespace motorcar {
     };
 
 
+    template <typename ...Components>
+    class Query {
+        template <typename First, typename ...Other>
+        static auto internal(ECSWorld& world) {
+            if constexpr (sizeof...(Other) > 0) {
+                if constexpr (std::is_same_v<First, Entity>) {
+                    return internal<Other...>(world) |
+                        std::views::transform([](auto& p) {
+                            return std::make_pair(
+                                std::get<0>(p),
+                                std::tuple_cat(std::make_tuple(std::get<0>(p)), std::get<1>(p))
+                            );
+                        });
+                } else {
+                    ComponentStorage& cs = world.storage.at(typeid(First));
+
+                    return internal<Other...>(world) |
+                        std::views::filter([&](auto& p) {
+                            return cs.has_component(std::get<0>(p));
+                        }) |
+                        std::views::transform([&](auto& p) {
+                            return std::make_pair(
+                                std::get<0>(p),
+                                std::tuple_cat(std::make_tuple(cs.get_component<First>(std::get<0>(p)).value()), std::get<1>(p))
+                            );
+                        });
+                }
+            } else {
+                using V = std::vector<std::pair<Entity, std::tuple<First*>>>;
+                ComponentStorage& cs = world.storage.at(typeid(First));
+                V v;
+                v.reserve(cs.len);
+                for (int idx = 0; idx < cs.len; idx++) {
+                    v.push_back(std::make_pair(cs.entities[idx], std::make_tuple((First*)cs.compute_pointer(idx))));
+                }
+
+                ECSWorld::static_storage.emplace_back(std::move(v));
+                return std::any_cast<V&>(ECSWorld::static_storage.back());
+            }
+        }
+
+        public:
+            static auto it(ECSWorld& world) {
+                return std::views::transform(internal<Components...>(world), [](auto p) { return std::get<1>(p); });
+            }
+    };
 }
 #undef MOTORCAR_EAT_EXCEPTION
 

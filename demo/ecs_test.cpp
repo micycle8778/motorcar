@@ -1,4 +1,5 @@
 #include "spdlog/common.h"
+#include <chrono>
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
 #include "spdlog/spdlog.h"
 #include "types.h"
@@ -11,7 +12,6 @@ struct Position {
     float y;
 
     Position(float x, float y) : x(x), y(y) {}
-
     Position(sol::object object) {
         *this = object.as<Position>();
     }
@@ -39,37 +39,72 @@ struct motorcar::ComponentTypeTrait<Velocity> {
     constexpr static std::string_view component_name = "velocity";
 };
 
+// number of 2d vectors to translate
+#define NUM_VECS 20000
+// number of times to translate the vectors
+// think of this as the number of ticks run by the engine
+#define INNER_RUNS 1000
+// number of times the benchmark is run
+#define OUTER_RUNS 5
+
+template <typename Func>
+void bench(const Func func) {
+    auto start = std::chrono::steady_clock::now();
+    func();
+    auto end = std::chrono::steady_clock::now();
+
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    std::cout << "microseconds: " << elapsed.count() << std::endl;
+}
+
 int main(void) {
     spdlog::set_level(spdlog::level::trace);
-    motorcar::ECSWorld ecs;
 
-    motorcar::Entity text = ecs.new_entity();
-    ecs.emplace_component<Position>(text, Position(100, 100));
+    const size_t NUM_ENTITIES = 10000;
+    const size_t TICKS = 1000;
+    const size_t BENCHES = 5;
 
-    motorcar::Entity player = ecs.new_entity();
-    ecs.emplace_component<Position>(player, Position(0, 0));
-    ecs.emplace_component<Velocity>(player, Velocity(0, 0));
+    float sum = 0.;
 
-    motorcar::Entity enemy = ecs.new_entity();
-    ecs.emplace_component<Position>(enemy, Position(100, 0));
-    ecs.emplace_component<Velocity>(enemy, Velocity(-10, 0));
+    for (int bench = 0; bench < BENCHES; bench++) {
+        motorcar::ECSWorld ecs;
 
-    auto it = motorcar::ECSWorld::Query<Position, Velocity>::it(ecs);
 
-    // {
-    //     Position* pos = ecs.get_component<Position>(text).value();
-    //     SPDLOG_TRACE("text.position = ({}, {})", pos->x, pos->y);
-    // }
-    //
-    // {
-    //     Position* pos = ecs.get_component<Position>(player).value();
-    //     Velocity* vel = ecs.get_component<Velocity>(player).value();
-    //     SPDLOG_TRACE("player.position = ({}, {}); player.velocity = ({}, {})", pos->x, pos->y, vel->x, vel->y);
-    // }
-    //
-    // {
-    //     Position* pos = ecs.get_component<Position>(enemy).value();
-    //     Velocity* vel = ecs.get_component<Velocity>(enemy).value();
-    //     SPDLOG_TRACE("enemy.position = ({}, {}); enemy.velocity = ({}, {})", pos->x, pos->y, vel->x, vel->y);
-    // }
+        for (int idx = 0; idx < NUM_ENTITIES; idx++) {
+            motorcar::Entity e;
+
+            auto p = Position(
+                ((float)rand() / RAND_MAX) * 100,
+                ((float)rand() / RAND_MAX) * 100
+            );
+            auto v = Velocity(
+                -5 + (((float)rand() / RAND_MAX) * 10),
+                -5 + (((float)rand() / RAND_MAX) * 10)
+            );
+
+            ecs.emplace_component<Position>(e, p);
+            ecs.emplace_component<Velocity>(e, v);
+
+            // ecs.insert_component(e, p);
+            // ecs.insert_component(e, v);
+        }
+
+        auto start = std::chrono::steady_clock::now();
+        for (size_t tick = 0; tick < TICKS; tick++) {
+            for (auto t : motorcar::Query<Position, Velocity>::it(ecs)) {
+                auto p = std::get<Position*>(t);
+                auto v = std::get<Velocity*>(t);
+
+                p->x += v->x;
+                p->y += v->y;
+
+                sum += p->x;
+                sum += p->y;
+            }
+        }
+        auto end = std::chrono::steady_clock::now();
+
+        auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+        SPDLOG_TRACE("microseconds: {}; sum: {}", elapsed.count(), sum);
+    }
 }

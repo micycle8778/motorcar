@@ -1,3 +1,4 @@
+#include <vector>
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
 #include <spdlog/spdlog.h>
 
@@ -5,6 +6,8 @@
 
 #define MOTORCAR_EAT_EXCEPTION(code, msg) try { code; } catch (const std::exception& e) { SPDLOG_ERROR(msg, " what(): {}", e.what()); } catch (...) { SPDLOG_ERROR(msg); }
 using namespace motorcar;
+
+std::vector<std::any> ECSWorld::static_storage;
 
 void ComponentStorage::expand() {
     // realloc with a factor of 1.5x

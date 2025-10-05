@@ -93,15 +93,6 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     });
 
     sol::table engine_namespace = lua["Engine"].force();
-    engine_namespace.set_function("test", [&]() {
-        auto debug_info = get_debug_info(lua);
-        
-        if (debug_info.has_value()) {
-            spdlog::trace("filename: {}, lineno: {}", debug_info->filename, debug_info->lineno);
-        } else {
-            spdlog::error("couldn't get debug info???");
-        }
-    });
     engine_namespace.set_function("quit", [&]() {
         engine.keep_running = false;
     });

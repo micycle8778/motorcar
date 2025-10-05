@@ -61,7 +61,9 @@ namespace motorcar {
     };
 
     class ResourceManager {
-        std::unordered_map<std::string_view, Resource> path_to_resource_map;
+        typedef std::hash<std::string_view> svhasher;
+        // std::hash<std::string_view>() -> size_t
+        std::unordered_map<size_t, Resource> path_to_resource_map;
         std::vector<std::unique_ptr<ILoadResources>> resource_loaders;
 
         public:
@@ -76,15 +78,15 @@ namespace motorcar {
 }
 
 template <typename T>
-std::optional<T*> motorcar::ResourceManager::get_resource(std::string_view filename) {
-    if (!load_resource(filename)) {
-        spdlog::error("Couldn't load resource '{}'", filename);
+std::optional<T*> motorcar::ResourceManager::get_resource(std::string_view resource_path) {
+    if (!load_resource(resource_path)) {
+        spdlog::error("Couldn't load resource '{}'", resource_path);
         return {};
     }
     
     // look for T in `path_to_resource_map`
-    if (path_to_resource_map.contains(filename)) {
-        auto maybe = path_to_resource_map[filename].get<T>();
+    if (path_to_resource_map.contains(svhasher{}(resource_path))) {
+        auto maybe = path_to_resource_map[svhasher{}(resource_path)].get<T>();
         if (maybe.has_value()) {
             return maybe;
         } else {

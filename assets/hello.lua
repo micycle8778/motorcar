@@ -1,14 +1,9 @@
-if Input.is_key_pressed_this_frame("space") then
-    Log.trace("Hello, world!")
-    Log.debug("Hello, world!")
-    Log.warn("Hello, world!")
-    Log.error("Hello, world!")
+if Input.is_key_pressed_this_frame("d") then
     Sound.play_sound("doo-doo.mp3")
 end
 
-if Input.is_key_pressed_this_frame("f3") then
-    Engine.test()
-    Engine.sprites[1].position.x = Engine.sprites[1].position.x + 10
+if Input.is_key_pressed_this_frame("s") then
+    Sound.play_sound("splat.ogg")
 end
 
 if Input.is_key_pressed_this_frame("esc") then

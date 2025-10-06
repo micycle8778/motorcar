@@ -98,7 +98,7 @@ FetchContent_Declare(
     glm
     GIT_REPOSITORY https://github.com/g-truc/glm.git
     GIT_TAG e7714885929f1dcd2bdc2531cc99d3c1dc6daa18
-    GIT_SHALLOW TRUE
+    GIT_SHALLOW FALSE
     GIT_PROGRESS TRUE
     )
 FetchContent_MakeAvailable( glm )

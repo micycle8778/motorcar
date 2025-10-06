@@ -93,13 +93,16 @@ int main(int argc, char* argv[]) {
     );
 
     auto player = e.ecs->new_entity();
-    e.ecs->emplace_component<Position>(player, 0, 0);
-    e.ecs->emplace_component<Velocity>(player, 0, 0);
+    e.ecs->emplace_native_component<Position>(player, 0, 0);
+    e.ecs->emplace_native_component<Velocity>(player, 0, 0);
 
     auto enemy = e.ecs->new_entity();
-    e.ecs->emplace_component<Position>(enemy, 100, 0);
-    e.ecs->emplace_component<Velocity>(enemy, -10, 0);
+    e.ecs->emplace_native_component<Position>(enemy, 100, 0);
+    e.ecs->emplace_native_component<Velocity>(enemy, -10, 0);
 
+    e.ecs->flush_command_queue();
+
+    e.scripts->run_script("first.lua");
     e.run([&]() {
         e.scripts->run_script("hello.lua");
     });

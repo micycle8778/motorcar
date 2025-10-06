@@ -1,4 +1,5 @@
 #include <ranges>
+#include <stdexcept>
 #include <unordered_set>
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
@@ -62,7 +63,7 @@ namespace {
 
 ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table);
-
+    engine.ecs->lua_storage = sol::table(lua, sol::new_table());
 
     sol::table input_namespace = lua["Input"].force();
     #define INPUT_METHOD(name) input_namespace.set_function(#name, [&](std::string key_name) { return engine.input->name(Key::key_from_string(key_name)); })
@@ -113,13 +114,56 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
         engine.ecs->delete_entity(e);
     });
     ecs_namespace.set_function("get_component", [&](Entity e, std::string component) {
-        return engine.ecs->get_component_as_lua_object(e, component, lua);
+        return engine.ecs->get_native_component_as_lua_object(e, component, lua);
     });
-    ecs_namespace.set_function("delete_component", [&](Entity e, std::string component) {
-        engine.ecs->delete_component(e, component);
+    ecs_namespace.set_function("remove_component_from_entity", [&](Entity e, std::string component) {
+        bool is_native_component = engine.ecs->native_component_exists(component);
+        bool is_lua_component = engine.ecs->lua_storage[component].valid();
+
+        if (is_native_component) {
+            engine.ecs->remove_native_component_from_entity(e, component);
+        } else if (is_lua_component) {
+            engine.ecs->command_queue.push_back([=](ECSWorld* ecs) {
+                ecs->lua_storage[component][e] = sol::nil;
+            });
+        }
+    });
+    ecs_namespace.set_function("register_component", [&](Entity e, std::string component) {
+        if (engine.ecs->native_component_exists(component)) {
+            throw std::runtime_error(std::format("trying to register native component {}", component));
+        }
+
+        if (!engine.ecs->lua_storage[component].valid()) {
+            engine.ecs->lua_storage[component] = sol::table(lua, sol::new_table());
+        }
+    });
+    ecs_namespace.set_function("insert_component", [&](Entity e, std::string component_name, sol::object component) {
+        if (engine.ecs->native_component_exists(component_name)) {
+            engine.ecs->insert_native_component_from_lua(e, component_name, component);
+            return;
+        }
+
+        if (!engine.ecs->lua_storage[component_name].valid()) {
+            SPDLOG_DEBUG("Registering new lua component {}.", component_name);
+            engine.ecs->lua_storage[component_name] = sol::table(lua, sol::new_table());
+        }
+
+        if (component == sol::nil) {
+            SPDLOG_TRACE("component == sol::nil");
+        }
+
+        engine.ecs->lua_storage[component_name][e] = component;
     });
     ecs_namespace.set_function("for_each", [&](sol::table components, sol::function callback) {
-        // BUG: not handling if #component_names == 0 or if component_names = { "entity" }
+        if (components.size() == 0) {
+            callback();
+            return;
+        }
+
+        // TODO: is this desirable?
+        if (components.size() == 1 && components[1] == "entity") {
+            throw std::runtime_error("component list of just 'entity' not supported.");
+        }
 
         std::vector<std::string> component_names;
         for (size_t idx = 1; idx <= components.size(); idx++) {
@@ -127,15 +171,37 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
         }
 
         auto view = component_names | std::views::filter([](auto s) { return s != "entity"; });
+        auto first_component_name = *view.begin();
+        std::vector<Entity> starting_entites;
 
-        auto _entities = engine.ecs->get_entities_from_component_name(*view.begin());
-        std::unordered_set<Entity> entities(_entities.begin(), _entities.end());
+        if (engine.ecs->native_component_exists(first_component_name)) {
+            starting_entites = engine.ecs->get_entities_from_native_component_name(first_component_name);
+        } else if (engine.ecs->lua_storage[first_component_name].valid()) {
+            engine.ecs->lua_storage[first_component_name].get<sol::table>().for_each([&](sol::object e, sol::object) {
+                starting_entites.push_back(e.as<Entity>());
+            });
+        } else {
+            SPDLOG_WARN("requested component {} doesn't exist in ECS.", first_component_name);
+            return;
+        }
+        
+        std::unordered_set<Entity> entities(starting_entites.begin(), starting_entites.end());
 
         std::vector<Entity> to_remove;
         for (auto component_name : component_names | std::views::drop(1)) {
             if (component_name == "entity") continue;
             for (Entity e : entities) {
-                if (!engine.ecs->has_component(e, component_name)) {
+                bool is_native_component = engine.ecs->native_component_exists(component_name);
+                bool is_lua_component = engine.ecs->lua_storage[component_name].valid();
+
+                // if the component doesn't exist in the ecs, give up
+                if (!is_native_component && !is_lua_component) {
+                    to_remove.push_back(e);
+                // if the component does exist in the native storage, but this entity doesn't have it, filter
+                } else if (is_native_component && !engine.ecs->entity_has_native_component(e, component_name)) {
+                    to_remove.push_back(e);
+                // ditto for lua
+                } else if (is_lua_component && !engine.ecs->lua_storage[component_name][e].valid()) {
                     to_remove.push_back(e);
                 }
             }
@@ -150,10 +216,16 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
         for (Entity e : entities) {
             sol::table argument = sol::table(lua, sol::new_table());
             for (auto component : component_names) {
+                bool is_native_component = engine.ecs->native_component_exists(component);
+
                 if (component == "entity") {
                     argument[component] = e;
                 } else {
-                    argument[component] = engine.ecs->get_component_as_lua_object(e, component, lua);
+                    if (is_native_component) {
+                        argument[component] = engine.ecs->get_native_component_as_lua_object(e, component, lua);
+                    } else {
+                        argument[component] = engine.ecs->lua_storage[component][e];
+                    }
                 }
             }
             callback(argument);
@@ -206,7 +278,8 @@ void ScriptManager::run_script(std::string_view path) {
         spdlog::error("Could not load script {}.", path);
     } else {
         // run the script specified by the path
-        sol::protected_function_result result = (*maybe_script.value())(); 
+        auto script = *maybe_script.value();
+        sol::protected_function_result result = script(); 
 
         if (!result.valid()) {
             sol::error error = result;

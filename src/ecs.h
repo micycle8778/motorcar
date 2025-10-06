@@ -3,8 +3,12 @@
 #include <any>
 #include <cstddef>
 #include <cstdlib>
+#include <functional>
 #include <optional>
+#include <sol/types.hpp>
+#include <stdexcept>
 #include <tuple>
+#include <type_traits>
 #include <typeindex>
 #include <ranges>
 
@@ -240,11 +244,16 @@ namespace motorcar {
     class ECSWorld {
         template <typename ...T>
         friend class Query;
+        friend class ScriptManager;
 
-        std::unordered_map<std::type_index, ComponentStorage> storage;
+        // usage: lua_storage[component_name][entity] = component
+        sol::table lua_storage;
+        std::unordered_map<std::type_index, ComponentStorage> native_storage;
         std::unordered_map<std::string, std::type_index> component_type_indices;
 
         Entity next_entity = 0;
+
+        std::vector<std::function<void(ECSWorld*)>> command_queue;
 
         public:
             static Ocean ocean;
@@ -258,70 +267,81 @@ namespace motorcar {
                 static_assert(ComponentTypeTrait<T>::value);
                 std::type_index type_idx = typeid(T);
 
-                if (!storage.contains(type_idx)) {
+                if (!native_storage.contains(type_idx)) {
                     const std::string_view sv = ComponentTypeTrait<T>::component_name;
                     std::string key = { sv.begin(), sv.end() };
                     if (component_type_indices.contains(key)) {
                         SPDLOG_ERROR("multiple components sharing names! aborting!");
                         std::abort();
                     }
-                    storage.emplace(type_idx, ComponentStorage::create<T>(100));
+                    native_storage.emplace(type_idx, ComponentStorage::create<T>(100));
                     component_type_indices.emplace(key, type_idx);
                 }
             }
 
             template <typename T, typename ...Args>
-            void emplace_component(Entity e, Args ...args) {
-                if (!storage.contains(typeid(T))) {
-                    register_component<T>();
-                }
+            void emplace_native_component(Entity e, Args ...args) {
+                command_queue.push_back([=](ECSWorld* self) {
+                    if (!self->native_storage.contains(typeid(T))) {
+                        self->register_component<T>();
+                    }
 
-                storage.at(typeid(T)).emplace_component<T>(e, args...);
+                    self->native_storage.at(typeid(T)).emplace_component<T>(e, args...);
+                });
             }
 
-            void insert_lua_component(Entity e, std::string_view component_name, sol::object object) {
+            void insert_native_component_from_lua(Entity e, std::string_view component_name, sol::object object) {
                 std::string key = { component_name.begin(), component_name.end() };
                 if (!component_type_indices.contains(key)) {
-                    SPDLOG_ERROR("attempt to insert non-existent lua component");
-                    std::abort();
+                    SPDLOG_ERROR("attempt to insert non-existent component from lua");
+                    throw std::runtime_error("attempt to insert non-existent component from lua");
                 }
-
-                storage.at(component_type_indices.at(key)).insert_sol_object(e, object);
+                command_queue.push_back([=](ECSWorld* self) {
+                    self->native_storage.at(self->component_type_indices.at(key)).insert_sol_object(e, object);
+                });
             }
 
-            template <typename T>
-            bool has_component(Entity e) {
-                if (!storage.contains(typeid(T))) {
-                    return false;
-                }
-
-                return storage.at(typeid(T)).has_component(e);
-            }
-
-            bool has_component(Entity e, std::string component_name) {
+            bool native_component_exists(std::string component_name) {
                 if (!component_type_indices.contains(component_name)) {
                     return false;
                 }
 
-                return storage.at(component_type_indices.at(component_name)).has_component(e);
+                return true;
             }
 
             template <typename T>
-            std::optional<T*> get_component(Entity e) {
-                if (!storage.contains(typeid(T))) {
+            bool entity_has_native_component(Entity e) {
+                if (!native_storage.contains(typeid(T))) {
+                    return false;
+                }
+
+                return native_storage.at(typeid(T)).has_component(e);
+            }
+
+            bool entity_has_native_component(Entity e, std::string component_name) {
+                if (!component_type_indices.contains(component_name)) {
+                    return false;
+                }
+
+                return native_storage.at(component_type_indices.at(component_name)).has_component(e);
+            }
+
+            template <typename T>
+            std::optional<T*> get_native_component(Entity e) {
+                if (!native_storage.contains(typeid(T))) {
                     return {};
                 }
 
-                return storage.at(typeid(T)).get_component<T>(e);
+                return native_storage.at(typeid(T)).get_component<T>(e);
             }
 
-            sol::object get_component_as_lua_object(Entity e, std::string_view component_name, sol::state& lua) {
+            sol::object get_native_component_as_lua_object(Entity e, std::string_view component_name, sol::state& lua) {
                 std::string key = { component_name.begin(), component_name.end() };
                 if (!component_type_indices.contains(key)) {
                     return {};
                 }
 
-                return storage.at(component_type_indices.at(key)).get_component_as_lua_object(e, lua);
+                return native_storage.at(component_type_indices.at(key)).get_component_as_lua_object(e, lua);
             }
 
             template <typename ...Components>
@@ -329,31 +349,53 @@ namespace motorcar {
                 return Query<Components...>::it(*this);
             }
 
-            const std::vector<Entity>& get_entities_from_component_name(std::string component_name) {
+            const std::vector<Entity>& get_entities_from_native_component_name(std::string component_name) {
                 return 
-                    storage.at(
+                    native_storage.at(
                         component_type_indices.at(component_name)
                     ).entities;
             }
 
             template <typename T>
-            void delete_component(Entity e) {
-                if (storage.contains(typeid(T))) {
-                    storage.at(typeid(T)).remove_component(e);
-                }
+            void remove_native_component_from_entity(Entity e) {
+                command_queue.push_back([&]() {
+                    if (native_storage.contains(typeid(T))) {
+                        native_storage.at(typeid(T)).remove_component(e);
+                    }
+                });
             }
 
-            void delete_component(Entity e, std::string_view component_name) {
+            void remove_native_component_from_entity(Entity e, std::string_view component_name) {
                 std::string key = { component_name.begin(), component_name.end() };
-                if (component_type_indices.contains(key)) {
-                    storage.at(component_type_indices.at(key)).remove_component(e);
-                }
+                command_queue.push_back([=](ECSWorld* self) {
+                    if (self->component_type_indices.contains(key)) {
+                        self->native_storage.at(self->component_type_indices.at(key)).remove_component(e);
+                    }
+                });
             }
 
             void delete_entity(Entity e) {
-                for (auto& [_, s] : storage) {
-                    s.remove_component(e);
+                command_queue.push_back([=](ECSWorld* self) {
+                    for (auto& [_, s] : self->native_storage) {
+                        s.remove_component(e);
+                    }
+
+                    self->lua_storage.for_each([&](sol::object, sol::object components) {
+                        if (components.is<sol::table>()) {
+                            components.as<sol::table>()[e] = sol::nil;
+                        } else {
+                            SPDLOG_WARN("non-table found in lua_storage. this is an engine bug.");
+                        }
+                    });
+                });
+            }
+
+            void flush_command_queue() {
+                for (auto command : command_queue) {
+                    command(this);
                 }
+                
+                command_queue.clear();
             }
     };
 
@@ -372,7 +414,7 @@ namespace motorcar {
                             );
                         });
                 } else {
-                    ComponentStorage& cs = world.storage.at(typeid(First));
+                    ComponentStorage& cs = world.native_storage.at(typeid(First));
 
                     return internal<Other...>(world) |
                         std::views::filter([&](auto& p) {
@@ -386,10 +428,14 @@ namespace motorcar {
                         });
                 }
             } else {
+                // for right now, lets not deal with this annoyance.
+                // the convention is to have Entity *last*.
+                static_assert(!std::is_same_v<Entity, First>);
+
                 using Pair = std::pair<Entity, std::tuple<First*>>;
                 // using V = std::vector<Pair, Ocean::Allocator<Pair>>;
 
-                ComponentStorage& cs = world.storage.at(typeid(First));
+                ComponentStorage& cs = world.native_storage.at(typeid(First));
                 // V v(Ocean::Allocator(world.ocean));
                 Pair* pairs = Ocean::Allocator<Pair>(world.ocean).allocate(cs.len);
 
@@ -409,6 +455,8 @@ namespace motorcar {
             static auto it(ECSWorld& world) {
                 return std::views::transform(internal<Components...>(world), [](auto p) { return std::get<1>(p); });
             }
+
+
     };
 }
 #undef MOTORCAR_EAT_EXCEPTION

@@ -19,8 +19,9 @@ Engine::Engine(const std::string_view& name, std::initializer_list<Sprite> sprit
     gfx = std::make_shared<GraphicsManager>(*this, name);
     input = std::make_shared<InputManager>(*this);
     sound = std::make_shared<SoundManager>(*this);
-    scripts = std::make_shared<ScriptManager>(*this);
+
     ecs = std::make_shared<ECSWorld>();
+    scripts = std::make_shared<ScriptManager>(*this);
 }
 
 void Engine::run(std::function<void()> callback) {

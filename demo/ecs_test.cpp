@@ -73,12 +73,14 @@ int main(void) {
                 -5 + (((float)rand() / RAND_MAX) * 10)
             );
 
-            ecs.emplace_component<Position>(e, p);
-            ecs.emplace_component<Velocity>(e, v);
+            ecs.emplace_native_component<Position>(e, p);
+            ecs.emplace_native_component<Velocity>(e, v);
 
             // ecs.insert_component(e, p);
             // ecs.insert_component(e, v);
         }
+
+        ecs.flush_command_queue();
 
         auto start = std::chrono::steady_clock::now();
         for (size_t tick = 0; tick < TICKS; tick++) {

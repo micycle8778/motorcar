@@ -1,3 +1,5 @@
+#include <ranges>
+#include <unordered_set>
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
 
@@ -9,6 +11,7 @@
 #include "engine.h"
 #include "input.h"
 #include "sound.h"
+#include "ecs.h"
 
 using namespace motorcar;
 
@@ -60,6 +63,7 @@ namespace {
 ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table);
 
+
     sol::table input_namespace = lua["Input"].force();
     #define INPUT_METHOD(name) input_namespace.set_function(#name, [&](std::string key_name) { return engine.input->name(Key::key_from_string(key_name)); })
     INPUT_METHOD(is_key_held_down);
@@ -67,6 +71,7 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     INPUT_METHOD(is_key_repeated_this_frame);
     INPUT_METHOD(is_key_released_this_frame);
     #undef INPUT_METHOD
+
 
     sol::table log_namespace = lua["Log"].force();
     #define LOG_FN(log_level) \
@@ -80,23 +85,80 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     LOG_FN(error);
     #undef LOG_FN
 
-    // log_namespace.set_function(#name, [&](std::string key_name))
 
     sol::table sound_namespace = lua["Sound"].force();
     sound_namespace.set_function("play_sound", [&](std::string sound_name) {
         engine.sound->play_sound(sound_name);
     });
 
+
     sol::table resources_namespace = lua["Resources"].force();
     resources_namespace.set_function("load_resource", [&](std::string resource_path) {
         engine.resources->load_resource(resource_path);
     });
+
 
     sol::table engine_namespace = lua["Engine"].force();
     engine_namespace.set_function("quit", [&]() {
         engine.keep_running = false;
     });
     engine_namespace["sprites"] = std::ref(engine.sprites);
+
+
+    sol::table ecs_namespace = lua["ECS"].force();
+    ecs_namespace.set_function("new_entity", [&]() {
+        return engine.ecs->new_entity();
+    });
+    ecs_namespace.set_function("delete_entity", [&](Entity e) {
+        engine.ecs->delete_entity(e);
+    });
+    ecs_namespace.set_function("get_component", [&](Entity e, std::string component) {
+        return engine.ecs->get_component_as_lua_object(e, component, lua);
+    });
+    ecs_namespace.set_function("delete_component", [&](Entity e, std::string component) {
+        engine.ecs->delete_component(e, component);
+    });
+    ecs_namespace.set_function("for_each", [&](sol::table components, sol::function callback) {
+        // BUG: not handling if #component_names == 0 or if component_names = { "entity" }
+
+        std::vector<std::string> component_names;
+        for (size_t idx = 1; idx <= components.size(); idx++) {
+            component_names.push_back(components[idx].get<std::string>());
+        }
+
+        auto view = component_names | std::views::filter([](auto s) { return s != "entity"; });
+
+        auto _entities = engine.ecs->get_entities_from_component_name(*view.begin());
+        std::unordered_set<Entity> entities(_entities.begin(), _entities.end());
+
+        std::vector<Entity> to_remove;
+        for (auto component_name : component_names | std::views::drop(1)) {
+            if (component_name == "entity") continue;
+            for (Entity e : entities) {
+                if (!engine.ecs->has_component(e, component_name)) {
+                    to_remove.push_back(e);
+                }
+            }
+
+            for (Entity e : to_remove) {
+                entities.erase(e);
+            }
+
+            to_remove.clear();
+        }
+
+        for (Entity e : entities) {
+            sol::table argument = sol::table(lua, sol::new_table());
+            for (auto component : component_names) {
+                if (component == "entity") {
+                    argument[component] = e;
+                } else {
+                    argument[component] = engine.ecs->get_component_as_lua_object(e, component, lua);
+                }
+            }
+            callback(argument);
+        }
+    });
 
     lua.new_usertype<Sprite>("Sprite",
         sol::constructors<Sprite(vec2, vec2, f32, std::string)>(),

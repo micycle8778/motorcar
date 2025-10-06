@@ -4,10 +4,11 @@ namespace motorcar {
     struct Engine;
 
     class ScriptManager {
-        sol::state lua;
         Engine& engine;
 
         public:
+            sol::state lua;
+
             ScriptManager(Engine& engine);
 
             void run_script(std::string_view path);

@@ -8,6 +8,7 @@
 #include "resources.h"
 #include "engine.h"
 #include "scripts.h"
+#include "ecs.h"
 
 using namespace motorcar;
 
@@ -19,6 +20,7 @@ Engine::Engine(const std::string_view& name, std::initializer_list<Sprite> sprit
     input = std::make_shared<InputManager>(*this);
     sound = std::make_shared<SoundManager>(*this);
     scripts = std::make_shared<ScriptManager>(*this);
+    ecs = std::make_shared<ECSWorld>();
 }
 
 void Engine::run(std::function<void()> callback) {

@@ -8,7 +8,7 @@
 using namespace motorcar;
 
 Ocean ECSWorld::ocean;
-const size_t Ocean::MINIMUM_POOL_SIZE;
+const size_t Ocean::MIB;
 
 void ComponentStorage::expand() {
     // realloc with a factor of 1.5x

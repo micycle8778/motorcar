@@ -10,6 +10,7 @@
 
 namespace motorcar {
     class ResourceManager;
+    class ECSWorld;
     class GraphicsManager;
     class InputManager;
     class SoundManager;
@@ -21,6 +22,7 @@ namespace motorcar {
         std::shared_ptr<ResourceManager> resources;
         std::shared_ptr<GraphicsManager> gfx;
         std::shared_ptr<InputManager> input;
+        std::shared_ptr<ECSWorld> ecs;
 
         std::vector<Sprite> sprites;
 

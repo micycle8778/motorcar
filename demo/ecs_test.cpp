@@ -82,10 +82,18 @@ int main(void) {
 
         auto start = std::chrono::steady_clock::now();
         for (size_t tick = 0; tick < TICKS; tick++) {
-            for (auto t : motorcar::Query<Position, Velocity>::it(ecs)) {
-                auto p = std::get<Position*>(t);
-                auto v = std::get<Velocity*>(t);
-
+            // for (auto t : motorcar::Query<Position, Velocity>::it(ecs)) {
+            //     auto p = std::get<Position*>(t);
+            //     auto v = std::get<Velocity*>(t);
+            //
+            //     p->x += v->x;
+            //     p->y += v->y;
+            //
+            //     sum += p->x;
+            //     sum += p->y;
+            // }
+            
+            for (auto [p, v] : ecs.query<Position, Velocity>()) {
                 p->x += v->x;
                 p->y += v->y;
 

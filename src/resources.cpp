@@ -1,11 +1,12 @@
+// BUG: the usage of svhasher falsely assumes that the hashes will never collide
+// there hasn't been a hash collision yet, but it will be annoying when it happens
+
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
 
 #include <filesystem>
 #include <fstream>
 #include <string_view>
 
-#include "soloud.h"
-#include "soloud_wav.h"
 #include "spdlog/spdlog.h"
 
 #include "resources.h"

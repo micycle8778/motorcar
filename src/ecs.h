@@ -1,3 +1,5 @@
+// TODO: handle failure for the lua functions better. they currently crash in an unclear way
+
 #include <any>
 #include <cstddef>
 #include <cstdlib>
@@ -26,6 +28,7 @@ namespace motorcar {
     class ComponentStorage {
         template <typename ...T>
         friend class Query;
+        friend class ECSWorld;
 
         const std::string_view component_name = "";
         const std::type_info* type;
@@ -150,7 +153,7 @@ namespace motorcar {
         };
 
         // one MiB
-        static const size_t MINIMUM_POOL_SIZE = 1 << 20;
+        static const size_t MIB = 1 << 20;
 
         std::vector<Pool> pools;
         size_t current_pool = 0;
@@ -192,7 +195,8 @@ namespace motorcar {
                     }
                     
                     // we're out of memory! get more!
-                    ocean.pools.emplace_back(std::max(bytes_needed, MINIMUM_POOL_SIZE));
+                    // allocate as much memory as needed, to the nearest MiB
+                    ocean.pools.emplace_back(((bytes_needed / MIB) + 1) * MIB);
 
                     void* ptr = ocean.pools.back().ptr;
                     ocean.pools.back().ptr = (void*)((size_t)ptr + bytes_needed);
@@ -208,9 +212,21 @@ namespace motorcar {
             void reset() {
                 current_pool = 0;
 
-                for (Pool& pool : pools) {
+                // combine the pools together if we have many
+                if (pools.size() > 1) {
+                    size_t bytes = 0;
+                    for (Pool& pool : pools) {
+                        bytes += pool.capacity;
+                        free(pool.ptr);
+                    }
+
+                    pools.clear();
+                    pools.emplace_back(bytes);
+                } else if (pools.size() == 1) { // otherwise just reset the first one
+                    Pool& pool = pools.front();
                     pool.ptr = (void*)((size_t)pool.ending_pointer - pool.capacity);
                 }
+
             }
 
             ~Ocean() {
@@ -229,8 +245,6 @@ namespace motorcar {
         std::unordered_map<std::string, std::type_index> component_type_indices;
 
         Entity next_entity = 0;
-
-        // TODO: systems
 
         public:
             static Ocean ocean;
@@ -265,18 +279,6 @@ namespace motorcar {
                 storage.at(typeid(T)).emplace_component<T>(e, args...);
             }
 
-            // template <typename Component>
-            // void insert_component(Entity e, Component&& c) {
-            //     using RealType = std::remove_reference_t<Component>;
-            //
-            //     if (!storage.contains(typeid(RealType))) {
-            //         register_component<RealType>();
-            //     }
-            //
-            //     SPDLOG_TRACE("insert_component");
-            //     storage.at(typeid(RealType)).emplace_component<RealType>(e, c);
-            // }
-
             void insert_lua_component(Entity e, std::string_view component_name, sol::object object) {
                 std::string key = { component_name.begin(), component_name.end() };
                 if (!component_type_indices.contains(key)) {
@@ -296,6 +298,14 @@ namespace motorcar {
                 return storage.at(typeid(T)).has_component(e);
             }
 
+            bool has_component(Entity e, std::string component_name) {
+                if (!component_type_indices.contains(component_name)) {
+                    return false;
+                }
+
+                return storage.at(component_type_indices.at(component_name)).has_component(e);
+            }
+
             template <typename T>
             std::optional<T*> get_component(Entity e) {
                 if (!storage.contains(typeid(T))) {
@@ -312,6 +322,18 @@ namespace motorcar {
                 }
 
                 return storage.at(component_type_indices.at(key)).get_component_as_lua_object(e, lua);
+            }
+
+            template <typename ...Components>
+            auto query() {
+                return Query<Components...>::it(*this);
+            }
+
+            const std::vector<Entity>& get_entities_from_component_name(std::string component_name) {
+                return 
+                    storage.at(
+                        component_type_indices.at(component_name)
+                    ).entities;
             }
 
             template <typename T>

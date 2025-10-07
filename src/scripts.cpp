@@ -103,7 +103,6 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     engine_namespace.set_function("quit", [&]() {
         engine.keep_running = false;
     });
-    engine_namespace["sprites"] = std::ref(engine.sprites);
 
 
     sol::table ecs_namespace = lua["ECS"].force();
@@ -231,14 +230,6 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
             callback(argument);
         }
     });
-
-    lua.new_usertype<Sprite>("Sprite",
-        sol::constructors<Sprite(vec2, vec2, f32, std::string)>(),
-        "position", &Sprite::position,
-        "scale", &Sprite::scale,
-        "depth", &Sprite::depth,
-        "texture_path", &Sprite::texture_path
-    );
 
     lua.new_usertype<vec2>("vec2",
         sol::constructors<vec2(), vec2(float), vec2(float, float)>(),

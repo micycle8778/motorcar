@@ -1,5 +1,6 @@
 #pragma once
 #include "glm/glm.hpp"
+#include <glm/gtc/quaternion.hpp>
 #include <cstdint>
 #include <string>
 
@@ -27,11 +28,4 @@ namespace motorcar {
     typedef glm::mat4 mat4;
 
     typedef size_t Entity;
-
-    struct Sprite {
-        vec2 position = vec2(0);
-        vec2 scale = vec2(1);
-        f32 depth = 0.;
-        std::string texture_path;
-    };
 }

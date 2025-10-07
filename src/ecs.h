@@ -1,3 +1,4 @@
+#pragma once
 // TODO: handle failure for the lua functions better. they currently crash in an unclear way
 
 #include <any>
@@ -440,7 +441,7 @@ namespace motorcar {
                 Pair* pairs = Ocean::Allocator<Pair>(world.ocean).allocate(cs.len);
 
                 // v.reserve(cs.len);
-                for (int idx = 0; idx < cs.len; idx++) {
+                for (size_t idx = 0; idx < cs.len; idx++) {
                     pairs[idx] = std::make_pair(cs.entities[idx], std::make_tuple((First*)cs.compute_pointer(idx)));
                     // v.push_back(std::make_pair(cs.entities[idx], std::make_tuple((First*)cs.compute_pointer(idx))));
                 }

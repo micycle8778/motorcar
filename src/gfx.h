@@ -1,10 +1,7 @@
 #pragma once
 
 #include <memory>
-#include <span>
 #include <string_view>
-
-#include "types.h"
 
 struct GLFWwindow;
 
@@ -33,7 +30,7 @@ namespace motorcar {
                     int window_height = DEFAULT_HEIGHT
             );
             bool window_should_close();
-            void draw(std::span<Sprite> sprites);
+            void draw();
 
             GraphicsManager(GraphicsManager&) = delete;
             GraphicsManager& operator=(GraphicsManager&) = delete;

@@ -68,7 +68,8 @@ void Engine::run() {
         input->clear_key_buffers();
         gfx->draw(); // input->state gets updated here
 
-        // lastFrameTimestamp = glfwGetTime();
+        // free all the memory we used this frame
+        ecs->ocean.reset();
     }
 }
 

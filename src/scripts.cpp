@@ -4,6 +4,7 @@
 #include <sol/as_args.hpp>
 #include <sol/forward.hpp>
 #include <sol/protected_function_result.hpp>
+#include <sol/raii.hpp>
 #include <stdexcept>
 #include <unordered_set>
 #define SOL_ALL_SAFETIES_ON 1
@@ -392,6 +393,12 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
             }
         }
     });
+    ecs_namespace.set_function("fire_event", [&](std::string event_name, sol::object event_payload) {
+        engine.ecs->fire_event(event_name, event_payload);
+    });
+
+
+    lua.new_usertype<Event>("Event", sol::constructors<Event(std::string)>());
 
     lua.new_usertype<vec2>("vec2",
         sol::constructors<vec2(), vec2(float), vec2(float, float)>(),

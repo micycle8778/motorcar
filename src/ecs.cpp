@@ -1,5 +1,5 @@
+#include "components.h"
 #include <vector>
-#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
 #include <spdlog/spdlog.h>
 
 #include "ecs.h"
@@ -96,4 +96,12 @@ ComponentStorage::~ComponentStorage() {
     }
 
     free(blob);
+}
+
+void ECSWorld::fire_event(std::string event_name, sol::object event_payload) {
+    for (auto [event] : query<EventHandler>()) {
+        if (event->event_name == event_name) {
+            event->callback(event_payload);
+        }
+    }
 }

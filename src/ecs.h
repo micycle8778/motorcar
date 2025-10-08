@@ -399,8 +399,7 @@ namespace motorcar {
                 command_queue.clear();
             }
 
-            void fire_entity_event(Entity e, std::string event_name);
-            void fire_event(std::string event_name);
+            void fire_event(std::string event_name, sol::object event_payload);
     };
 
 

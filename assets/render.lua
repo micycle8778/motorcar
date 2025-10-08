@@ -4,6 +4,7 @@ end
 
 if Input.is_key_pressed_this_frame("s") then
     Sound.play_sound("splat.ogg")
+    ECS.for_each({ "transform" })
 end
 
 if Input.is_key_pressed_this_frame("f") then

@@ -16,33 +16,6 @@ int main(int argc, char* argv[]) {
     spdlog::set_level(spdlog::level::trace);
 
     motorcar::Engine e("helloworld");
-    // motorcar::Engine e("helloworld", {
-    //     motorcar::Sprite {
-    //         .position = motorcar::vec2(0),
-    //         .scale = motorcar::vec2(25),
-    //         // .scale = motorcar::vec2(0.1, 0.1),
-    //         .depth = .3,
-    //         .texture_path = "bowser.png"
-    //     },
-    //     motorcar::Sprite {
-    //         .position = motorcar::vec2(30),
-    //         .scale = motorcar::vec2(45),
-    //         .depth = .1,
-    //         .texture_path = "watercan.png"
-    //     },
-    //     motorcar::Sprite {
-    //         .position = motorcar::vec2(-50),
-    //         .scale = motorcar::vec2(16),
-    //         .depth = .2,
-    //         .texture_path = "michael-day.png"
-    //     },
-    //     motorcar::Sprite {
-    //         .position = motorcar::vec2(-25, -20),
-    //         .scale = motorcar::vec2(32),
-    //         .depth = .2,
-    //         .texture_path = "insect.png"
-    //     },
-    // });
 
     auto render_system = e.ecs->new_entity();
     e.ecs->emplace_native_component<motorcar::System>(render_system, [&]() {

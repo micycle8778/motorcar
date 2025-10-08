@@ -248,7 +248,6 @@ namespace motorcar {
         friend class ScriptManager;
 
         // usage: lua_storage[component_name][entity] = component
-        sol::table lua_storage;
         std::unordered_map<std::type_index, ComponentStorage> native_storage;
         std::unordered_map<std::string, std::type_index> component_type_indices;
 
@@ -257,6 +256,7 @@ namespace motorcar {
         std::vector<std::function<void(ECSWorld*)>> command_queue;
 
         public:
+            sol::table lua_storage;
             static Ocean ocean;
 
             Entity new_entity() {
@@ -398,6 +398,9 @@ namespace motorcar {
                 
                 command_queue.clear();
             }
+
+            void fire_entity_event(Entity e, std::string event_name);
+            void fire_event(std::string event_name);
     };
 
 
@@ -456,8 +459,6 @@ namespace motorcar {
             static auto it(ECSWorld& world) {
                 return std::views::transform(internal<Components...>(world), [](auto p) { return std::get<1>(p); });
             }
-
-
     };
 }
 #undef MOTORCAR_EAT_EXCEPTION

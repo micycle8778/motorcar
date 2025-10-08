@@ -41,7 +41,7 @@ Engine::Engine(const std::string_view& name) {
 }
 
 void Engine::run() {
-    const f32 SIMULATION_FREQ = 0.1;
+    const f32 SIMULATION_FREQ = 60;
     const u32 MAX_PHYSICS_STEPS = 4;
 
     // f32 lastFrameTimestamp = glfwGetTime();

@@ -142,10 +142,10 @@ namespace motorcar {
     COMPONENT_TYPE_TRAIT(System, "::system");
 
     struct EventHandler {
-        std::function<void(Entity, sol::object)> callback;
+        std::function<void(sol::object)> callback;
         std::string event_name;
 
-        EventHandler(std::function<void(Entity, sol::object)> callback, std::string event_name) : 
+        EventHandler(std::function<void(sol::object)> callback, std::string event_name) : 
             callback(callback), event_name(event_name) {}
         NOT_LUA_CONSTRUCTABLE(EventHandler)
     };

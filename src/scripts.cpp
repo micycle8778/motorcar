@@ -1,10 +1,14 @@
+#include "components.h"
+#include <functional>
 #include <ranges>
+#include <sol/as_args.hpp>
+#include <sol/forward.hpp>
+#include <sol/protected_function_result.hpp>
 #include <stdexcept>
 #include <unordered_set>
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
 
-#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
 #include <spdlog/spdlog.h>
 
 #include "scripts.h"
@@ -15,8 +19,24 @@
 #include "ecs.h"
 
 using namespace motorcar;
+using Tables = std::vector<sol::table>;
+
+#define TOKCAT2(t1, t2) t1 ## t2
+#define TOKCAT(t1, t2) TOKCAT2(t1, t2)
+#define PCALL(call) \
+    sol::protected_function_result TOKCAT(result, __LINE__) = call; \
+    if (!TOKCAT(result, __LINE__).valid()) { \
+        sol::error error = TOKCAT(result, __LINE__); \
+        spdlog::error("Caught lua error: {}", error.what()); \
+    } \
+    
 
 namespace {
+    struct Event {
+        std::string name;
+        Event(std::string name) : name(name) {}
+    };
+
     struct CallInfo {
         const char* filename;
         int lineno;
@@ -59,6 +79,120 @@ namespace {
                 }
             };
     };
+
+    Tables query(sol::state& lua, ECSWorld& ecs, sol::table query) {
+        Tables ret;
+
+        if (!query.valid()) {
+            throw std::runtime_error("query not specified.");
+        }
+
+        if (query.size() == 0) {
+            ret.push_back(sol::table(lua, sol::create));
+            return ret;
+        }
+
+#define STRCMP(object, s) (object.is<std::string>() && object.get<std::string>() == s)
+        // are entity only queries desirable?
+        if (query.size() == 1 && STRCMP(query[1],std::string("entity"))) {
+            // TODO: is throwing bad here?
+            throw std::runtime_error("component list of just 'entity' not supported.");
+        }
+#undef STRCMP
+
+        std::vector<std::string> component_names;
+        for (size_t idx = 1; idx <= query.size(); idx++) {
+            component_names.push_back(query[idx].get<std::string>());
+        }
+
+        auto view = component_names | std::views::filter([](auto s) { return s != "entity"; });
+        auto first_component_name = *view.begin();
+        std::vector<Entity> starting_entites;
+
+        if (ecs.native_component_exists(first_component_name)) {
+            starting_entites = ecs.get_entities_from_native_component_name(first_component_name);
+        } else if (ecs.lua_storage[first_component_name].valid()) {
+            ecs.lua_storage[first_component_name].get<sol::table>().for_each([&](sol::object e, sol::object) {
+                starting_entites.push_back(e.as<Entity>());
+            });
+        } else {
+            SPDLOG_WARN("requested component {} doesn't exist in ECS.", first_component_name);
+            return ret;
+        }
+        
+        std::unordered_set<Entity> entities(starting_entites.begin(), starting_entites.end());
+
+        std::vector<Entity> to_remove;
+        for (auto component_name : component_names | std::views::drop(1)) {
+            if (component_name == "entity") continue;
+            for (Entity e : entities) {
+                bool is_native_component = ecs.native_component_exists(component_name);
+                bool is_lua_component = ecs.lua_storage[component_name].valid();
+
+                // if the component doesn't exist in the ecs, give up
+                if (!is_native_component && !is_lua_component) {
+                    to_remove.push_back(e);
+                // if the component does exist in the native storage, but this entity doesn't have it, filter
+                } else if (is_native_component && !ecs.entity_has_native_component(e, component_name)) {
+                    to_remove.push_back(e);
+                // ditto for lua
+                } else if (is_lua_component && !ecs.lua_storage[component_name][e].valid()) {
+                    to_remove.push_back(e);
+                }
+            }
+
+            for (Entity e : to_remove) {
+                entities.erase(e);
+            }
+
+            to_remove.clear();
+        }
+
+        for (Entity e : entities) {
+            sol::table argument = sol::table(lua, sol::new_table());
+            for (auto component : component_names) {
+                bool is_native_component = ecs.native_component_exists(component);
+
+                if (component == "entity") {
+                    argument[component] = e;
+                } else {
+                    if (is_native_component) {
+                        argument[component] = ecs.get_native_component_as_lua_object(e, component, lua);
+                    } else {
+                        argument[component] = ecs.lua_storage[component][e];
+                    }
+                }
+            }
+            ret.push_back(argument);
+        }
+        return ret;
+    }
+
+    using I = std::vector<Tables>::iterator;
+    template <typename Func>
+    void f(
+        I begin, I end, 
+        Tables args, 
+        Func callback
+    ) {
+        if (begin == end) {
+            callback(args);
+            return;
+        }
+
+        for (sol::table arg : *begin) {
+            // NOTE: this is quite slow, O(n*m), where n is the number
+            // of queries the user is doing and m is the number of
+            // entities we've queried. This is a good spot to
+            // use the engine's ocean allocator, and/or a cons list.
+            Tables new_args;
+            new_args.reserve(args.size() + 1);
+            new_args.assign(args.begin(), args.end());
+            new_args.push_back(arg);
+
+            f(begin + 1, end, new_args, callback);
+        }
+    }
 }
 
 ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
@@ -153,81 +287,109 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
 
         engine.ecs->lua_storage[component_name][e] = component;
     });
-    ecs_namespace.set_function("for_each", [&](sol::table components, sol::function callback) {
-        if (components.size() == 0) {
-            callback();
-            return;
+    ecs_namespace.set_function("for_each", [&](sol::table components, sol::protected_function callback) {
+        if (!callback.valid()) {
+            throw std::runtime_error("callback not specified.");
         }
 
-        // TODO: is this desirable?
-        if (components.size() == 1 && components[1] == "entity") {
-            throw std::runtime_error("component list of just 'entity' not supported.");
+        for (sol::table argument : query(lua, *engine.ecs, components)) {
+            PCALL(callback(argument));
+        }
+    });
+    ecs_namespace.set_function("register_system", [&](sol::table queries, sol::protected_function callback, sol::object lifecycle) {
+        if (!callback.valid()) {
+            throw std::runtime_error("callback not specified.");
+        }
+        if (!queries.valid()) {
+            throw std::runtime_error("queries not specified.");
         }
 
-        std::vector<std::string> component_names;
-        for (size_t idx = 1; idx <= components.size(); idx++) {
-            component_names.push_back(components[idx].get<std::string>());
-        }
+        Entity e = engine.ecs->new_entity();
 
-        auto view = component_names | std::views::filter([](auto s) { return s != "entity"; });
-        auto first_component_name = *view.begin();
-        std::vector<Entity> starting_entites;
-
-        if (engine.ecs->native_component_exists(first_component_name)) {
-            starting_entites = engine.ecs->get_entities_from_native_component_name(first_component_name);
-        } else if (engine.ecs->lua_storage[first_component_name].valid()) {
-            engine.ecs->lua_storage[first_component_name].get<sol::table>().for_each([&](sol::object e, sol::object) {
-                starting_entites.push_back(e.as<Entity>());
-            });
+#define STRCMP(object, s) (object.is<std::string>() && object.as<std::string>() == s)
+        if (!lifecycle.valid() || STRCMP(lifecycle, "render")) {
+            engine.ecs->emplace_native_component<RenderSystem>(e);
+        } else if (STRCMP(lifecycle, "physics")) {
+            engine.ecs->emplace_native_component<PhysicsSystem>(e);
+        } else if (lifecycle.is<Event>()) {
+            // handle this a little later
         } else {
-            SPDLOG_WARN("requested component {} doesn't exist in ECS.", first_component_name);
-            return;
+            throw std::runtime_error("lifecycle is not valid. needs to be 'render', 'physics', Event.new('event-name'), or unspecified.");
         }
-        
-        std::unordered_set<Entity> entities(starting_entites.begin(), starting_entites.end());
+#undef STRCMP
 
-        std::vector<Entity> to_remove;
-        for (auto component_name : component_names | std::views::drop(1)) {
-            if (component_name == "entity") continue;
-            for (Entity e : entities) {
-                bool is_native_component = engine.ecs->native_component_exists(component_name);
-                bool is_lua_component = engine.ecs->lua_storage[component_name].valid();
-
-                // if the component doesn't exist in the ecs, give up
-                if (!is_native_component && !is_lua_component) {
-                    to_remove.push_back(e);
-                // if the component does exist in the native storage, but this entity doesn't have it, filter
-                } else if (is_native_component && !engine.ecs->entity_has_native_component(e, component_name)) {
-                    to_remove.push_back(e);
-                // ditto for lua
-                } else if (is_lua_component && !engine.ecs->lua_storage[component_name][e].valid()) {
-                    to_remove.push_back(e);
-                }
+        int queries_length = queries.size();
+        if (queries.empty()) {
+            if (lifecycle.is<Event>()) {
+                engine.ecs->emplace_native_component<EventHandler>(e, [=](sol::object event_payload) {
+                    callback(event_payload);
+                }, lifecycle.as<Event>().name);
+            } else {
+                engine.ecs->emplace_native_component<System>(e, [=]() {
+                    callback();
+                }, 0); // TODO: priority
             }
-
-            for (Entity e : to_remove) {
-                entities.erase(e);
-            }
-
-            to_remove.clear();
         }
 
-        for (Entity e : entities) {
-            sol::table argument = sol::table(lua, sol::new_table());
-            for (auto component : component_names) {
-                bool is_native_component = engine.ecs->native_component_exists(component);
+        bool is_strings = true;
+        bool is_tables = true;
+        for (int idx = 1; idx <= queries_length; idx++) {
+            if (!queries[idx].is<std::string>()) {
+                is_strings = false;
+                break;
+            }
+        }
+        for (int idx = 1; idx <= queries_length; idx++) {
+            if (!queries[idx].is<sol::table>()) {
+                is_tables = false;
+                break;
+            }
+        }
 
-                if (component == "entity") {
-                    argument[component] = e;
-                } else {
-                    if (is_native_component) {
-                        argument[component] = engine.ecs->get_native_component_as_lua_object(e, component, lua);
-                    } else {
-                        argument[component] = engine.ecs->lua_storage[component][e];
+        if (!is_strings && !is_tables) {
+            throw std::runtime_error("queries should be an array of strings or a 2d array of strings.");
+        } else if (is_strings) {
+            sol::state* state = &lua;
+            ECSWorld* ecs = &*engine.ecs;
+            if (lifecycle.is<Event>()) {
+                engine.ecs->emplace_native_component<EventHandler>(e, [=](sol::object event_payload) {
+                    for (sol::table argument : query(*state, *ecs, queries)) {
+                        callback(argument, event_payload);
                     }
-                }
+                }, lifecycle.as<Event>().name);
+            } else {
+                engine.ecs->emplace_native_component<System>(e, [=]() {
+                    for (sol::table argument : query(*state, *ecs, queries)) {
+                        callback(argument);
+                    }
+                }, 0); // TODO: priority
             }
-            callback(argument);
+        } else { // is_tables
+            sol::state* state = &lua;
+            ECSWorld* ecs = &*engine.ecs;
+            if (lifecycle.is<Event>()) {
+                engine.ecs->emplace_native_component<EventHandler>(e, [=](sol::object event_payload) {
+                    // arguments squared?
+                    std::vector<Tables> arguments2;
+                    for (int idx = 1; idx <= queries_length; idx++) {
+                        arguments2.push_back(query(*state, *ecs, queries[idx]));
+                    }
+                    f(arguments2.begin(), arguments2.end(), Tables(), [&](Tables& args) {
+                        callback(sol::as_args(args), event_payload);
+                    });
+                }, lifecycle.as<Event>().name);
+            } else {
+                engine.ecs->emplace_native_component<System>(e, [=]() {
+                    // arguments squared?
+                    std::vector<Tables> arguments2;
+                    for (int idx = 1; idx <= queries_length; idx++) {
+                        arguments2.push_back(query(*state, *ecs, queries[idx]));
+                    }
+                    f(arguments2.begin(), arguments2.end(), Tables(), [&](Tables& args) {
+                        callback(sol::as_args(args));
+                    }); 
+                }, 0); // TODO: priority
+            }
         }
     });
 
@@ -269,12 +431,7 @@ void ScriptManager::run_script(std::string_view path) {
         spdlog::error("Could not load script {}.", path);
     } else {
         // run the script specified by the path
-        auto script = *maybe_script.value();
-        sol::protected_function_result result = script(); 
-
-        if (!result.valid()) {
-            sol::error error = result;
-            spdlog::error("Caught lua error: {}", error.what());
-        }
+        sol::protected_function script = *maybe_script.value();
+        PCALL(script());
     }
 }

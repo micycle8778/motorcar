@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string_view>
+#include <webgpu.h>
 
 struct GLFWwindow;
 
@@ -21,6 +22,9 @@ namespace motorcar {
             GLFWwindow* window;
             std::shared_ptr<WebGPUState> webgpu;
             Engine& engine;
+            void draw_sprites(WGPUTextureView surface_texture_view);
+            void draw_3d(WGPUTextureView surface_texture_view);
+            void clear_screen(WGPUTextureView surface_texture_view);
 
         public:
             GraphicsManager(
@@ -31,6 +35,7 @@ namespace motorcar {
             );
             bool window_should_close();
             void draw();
+
 
             GraphicsManager(GraphicsManager&) = delete;
             GraphicsManager& operator=(GraphicsManager&) = delete;

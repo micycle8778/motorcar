@@ -1,6 +1,5 @@
 #pragma once
 #include "ecs.h"
-#include "glm/ext/quaternion_geometric.hpp"
 #include "types.h"
 #include <sol/sol.hpp>
 #include <stdexcept>
@@ -17,6 +16,11 @@
         throw std::runtime_error(#type " is not constructable from lua object!");\
     }
 
+#define DEFAULT_LUA_CONSTRUCTABLE(type) \
+    type(sol::object object) {\
+        *this = object.as<type>(); \
+    } \
+
 namespace motorcar {
     struct Transform {
         vec3 position = vec3(0);
@@ -24,9 +28,7 @@ namespace motorcar {
         vec3 scale = vec3(1);
 
         constexpr Transform() {}
-        Transform(sol::object object) {
-            *this = object.as<Transform>();
-        }
+        DEFAULT_LUA_CONSTRUCTABLE(Transform);
 
         constexpr Transform with_position(vec3 position) const {
             Transform ret;
@@ -176,6 +178,11 @@ namespace motorcar {
         NOT_LUA_CONSTRUCTABLE(BoundToScript)
     };
     COMPONENT_TYPE_TRAIT(BoundToScript, "::bound_to_script");
+
+    struct Cube {
+        DEFAULT_LUA_CONSTRUCTABLE(Cube);
+    };
+    COMPONENT_TYPE_TRAIT(Cube, "cube");
 
     void register_components_to_lua(sol::state& state);
     void register_components_to_ecs(ECSWorld& world);

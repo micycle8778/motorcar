@@ -60,6 +60,18 @@ if(WIN32)
     target_compile_definitions( soloud PRIVATE MA_NO_JACK )
 endif()
 
+# incbin
+FetchContent_Declare(
+    incbin
+    GIT_REPOSITORY https://github.com/graphitemaster/incbin
+    GIT_TAG        22061f51fe9f2f35f061f85c2b217b55dd75310d
+    GIT_SHALLOW FALSE
+    GIT_PROGRESS TRUE
+)
+FetchContent_MakeAvailable( incbin )
+add_library(incbin STATIC "${incbin_SOURCE_DIR}/incbin.c")
+target_include_directories(incbin PUBLIC "${incbin_SOURCE_DIR}")
+
 # webgpu
 set(WEBGPU_BACKEND "wgpu" CACHE STRING "WebGPU backend (wgpu or dawn)")
 FetchContent_Declare(
@@ -139,7 +151,7 @@ set_target_properties( motorcar PROPERTIES CXX_STANDARD 20 )
 ## Declare our engine's header path.
 ## This allows targets that depend on the engine to #include them.
 target_include_directories( motorcar PUBLIC src )
-target_link_libraries( motorcar PUBLIC glfw soloud spdlog::spdlog webgpu glfw3webgpu glm stb sol2 lua_static )
+target_link_libraries( motorcar PUBLIC glfw soloud spdlog::spdlog webgpu glfw3webgpu glm stb sol2 lua_static incbin )
 
 add_executable( helloworld demo/helloworld.cpp )
 set_target_properties( helloworld PROPERTIES CXX_STANDARD 20 )

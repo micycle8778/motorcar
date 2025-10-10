@@ -1,5 +1,3 @@
-#include "ecs.h"
-
 #include <ranges>
 #include <algorithm>
 #include <cstdlib>
@@ -12,50 +10,18 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#include <incbin.h>
+
 #include "gfx.h"
 #include "resources.h"
 #include "engine.h"
 #include "types.h"
-#include "ecs.h"
 #include "components.h"
 
 using namespace motorcar;
 
-const char* source = R"(
-struct Uniforms {
-    projection: mat4x4f,
-};
-
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var texSampler: sampler;
-@group(0) @binding(2) var texData: texture_2d<f32>;
-
-struct VertexInput {
-    @location(0) position: vec2f,
-    @location(1) texcoords: vec2f,
-    @location(2) translation: vec3f,
-    @location(3) scale: vec2f,
-};
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) texcoords: vec2f,
-};
-
-@vertex
-fn vertex_shader_main( in: VertexInput ) -> VertexOutput {
-    var out: VertexOutput;
-    out.position = uniforms.projection * vec4f( vec3f( in.scale * in.position, 0.0 ) + in.translation, 1.0 );
-    out.texcoords = in.texcoords;
-    return out;
-}
-
-@fragment
-fn fragment_shader_main( in: VertexOutput ) -> @location(0) vec4f {
-    var color = textureSample( texData, texSampler, in.texcoords ).rgba;
-    return color;
-}
-)";
+INCTXT(pipeline_2d_shader, "pipeline2d.wgsl");
+INCTXT(pipeline_3d_shader, "pipeline3d.wgsl");
 
 const std::string_view MISSING_TEXTURE_PATH = "::gfx::missing_texture";
 
@@ -66,18 +32,26 @@ struct GraphicsManager::WebGPUState {
     WGPUDevice device = nullptr;
     WGPUQueue queue = nullptr;
 
-    WGPUBuffer vertex_buffer = nullptr;
-    WGPUBuffer uniforms_buffer = nullptr;
+    WGPUBuffer cube_vertex_buffer = nullptr;
+    WGPUBuffer uniforms_buffer_3d = nullptr;
+    WGPUShaderModule shader_module_3d = nullptr;
+    WGPURenderPipeline pipeline_3d = nullptr;
+    WGPUTexture depth_texture = nullptr;
+    WGPUBindGroupLayout layout_3d = nullptr;
+
+    WGPUBuffer quad_vertex_buffer = nullptr;
+    WGPUBuffer uniforms_buffer_2d = nullptr;
     WGPUSampler sampler = nullptr;
-    WGPUShaderModule shader_module = nullptr;
-    WGPURenderPipeline pipeline = nullptr;
-    WGPUBindGroupLayout layout = nullptr;
+    WGPUShaderModule shader_module_2d = nullptr;
+    WGPURenderPipeline pipeline_2d = nullptr;
+    WGPUBindGroupLayout layout_2d = nullptr;
 
     WebGPUState(GLFWwindow*);
 
     void configure_surface(GLFWwindow* window);
     void setup(GLFWwindow*);
-    void init_pipeline(GLFWwindow*);
+    void init_pipeline_2d();
+    void init_pipeline_3d();
 };
 
 namespace {
@@ -90,8 +64,12 @@ namespace {
         //float rotation;
     };
 
-    struct Uniforms {
+    struct Uniforms2D {
         mat4 projection;
+    };
+
+    struct Uniforms3D {
+        mat4 view_projection;
     };
 
     WGPUTextureFormat wgpuSurfaceGetPreferredFormat( WGPUSurface surface, WGPUAdapter adapter ) {
@@ -148,14 +126,14 @@ namespace {
 
             texture_view = wgpuTextureCreateView(data, nullptr);
             bind_group = wgpuDeviceCreateBindGroup(webgpu.device, to_ptr(WGPUBindGroupDescriptor{
-                .layout = webgpu.layout,
+                .layout = webgpu.layout_2d,
                 .entryCount = 3,
                 // The entries `.binding` matches what we wrote in the shader.
                 .entries = to_ptr<WGPUBindGroupEntry>({
                     {
                         .binding = 0,
-                        .buffer = webgpu.uniforms_buffer,
-                        .size = sizeof(Uniforms)
+                        .buffer = webgpu.uniforms_buffer_2d,
+                        .size = sizeof(Uniforms2D)
                     },
                     {
                         .binding = 1,
@@ -238,6 +216,7 @@ namespace {
 }
 
 void GraphicsManager::WebGPUState::configure_surface(GLFWwindow* window) {
+    // recreate the frame buffer on resize
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);
     wgpuSurfaceConfigure(surface, to_ptr(WGPUSurfaceConfiguration{
@@ -247,6 +226,20 @@ void GraphicsManager::WebGPUState::configure_surface(GLFWwindow* window) {
         .width = (uint32_t)width,
         .height = (uint32_t)height,
         .presentMode = WGPUPresentMode_Fifo // Explicitly set this because of a Dawn bug
+    }));
+
+    // recreate the depth texture on resize
+    if (depth_texture != nullptr) {
+        wgpuTextureRelease(depth_texture);
+    }
+
+    depth_texture = wgpuDeviceCreateTexture(device, to_ptr(WGPUTextureDescriptor {
+        .usage = WGPUTextureUsage_RenderAttachment,
+        .dimension = WGPUTextureDimension_2D,
+        .size =  { .width = (u32)width, .height = (u32)height, .depthOrArrayLayers = 1 },
+        .format = WGPUTextureFormat_Depth24Plus,
+        .mipLevelCount = 1,
+        .sampleCount = 1,
     }));
 }
 
@@ -301,9 +294,15 @@ void GraphicsManager::WebGPUState::setup(GLFWwindow* window) {
     assert(device);
 
     queue = wgpuDeviceGetQueue(device);
+
+    // setup our framebuffer
+    configure_surface(window);
+    glfwSetFramebufferSizeCallback(window, [](GLFWwindow* window, int, int) {
+        ((Engine*)glfwGetWindowUserPointer(window))->gfx->webgpu->configure_surface(window);
+    });
 }
 
-void GraphicsManager::WebGPUState::init_pipeline(GLFWwindow* window) {
+void GraphicsManager::WebGPUState::init_pipeline_2d() {
     // A vertex buffer containing a textured square.
     const struct {
         // position
@@ -319,24 +318,18 @@ void GraphicsManager::WebGPUState::init_pipeline(GLFWwindow* window) {
     };
 
     // give the GPU our quad
-    vertex_buffer = wgpuDeviceCreateBuffer( device, to_ptr( WGPUBufferDescriptor{
-        .label = WGPUStringView( "Vertex Buffer", WGPU_STRLEN ),
+    quad_vertex_buffer = wgpuDeviceCreateBuffer( device, to_ptr( WGPUBufferDescriptor{
+        .label = WGPUStringView( "2D Vertex Buffer", WGPU_STRLEN ),
         .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
         .size = sizeof(vertices)
     }) );
-    wgpuQueueWriteBuffer(queue, vertex_buffer, 0, vertices, sizeof(vertices));
-
-    // setup our framebuffer
-    configure_surface(window);
-    glfwSetFramebufferSizeCallback(window, [](GLFWwindow* window, int, int) {
-        ((Engine*)glfwGetWindowUserPointer(window))->gfx->webgpu->configure_surface(window);
-    });
+    wgpuQueueWriteBuffer(queue, quad_vertex_buffer, 0, vertices, sizeof(vertices));
 
     // uniforms
-    uniforms_buffer = wgpuDeviceCreateBuffer( device, to_ptr( WGPUBufferDescriptor{
+    uniforms_buffer_2d = wgpuDeviceCreateBuffer( device, to_ptr( WGPUBufferDescriptor{
         .label = WGPUStringView( "Uniform Buffer", WGPU_STRLEN ),
         .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform,
-        .size = sizeof(Uniforms)
+        .size = sizeof(Uniforms2D)
     }) );
 
     // texture sampler
@@ -350,16 +343,16 @@ void GraphicsManager::WebGPUState::init_pipeline(GLFWwindow* window) {
 
     WGPUShaderSourceWGSL source_desc = {};
     source_desc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    source_desc.code = WGPUStringView( source, std::string_view(source).length() );
+    source_desc.code = WGPUStringView( gpipeline_2d_shaderData, std::string_view(gpipeline_2d_shaderData).length() );
     // Point to the code descriptor from the shader descriptor.
     WGPUShaderModuleDescriptor shader_desc = {};
     shader_desc.nextInChain = &source_desc.chain;
-    shader_module = wgpuDeviceCreateShaderModule( device, &shader_desc );   
+    shader_module_2d = wgpuDeviceCreateShaderModule( device, &shader_desc );   
 
-    pipeline = wgpuDeviceCreateRenderPipeline( device, to_ptr( WGPURenderPipelineDescriptor{
+    pipeline_2d = wgpuDeviceCreateRenderPipeline( device, to_ptr( WGPURenderPipelineDescriptor{
         // Describe the vertex shader inputs
         .vertex = {
-            .module = shader_module,
+            .module = shader_module_2d,
             .entryPoint = WGPUStringView{ "vertex_shader_main", std::string_view("vertex_shader_main").length() },
             // Vertex attributes.
             .bufferCount = 2,
@@ -423,7 +416,7 @@ void GraphicsManager::WebGPUState::init_pipeline(GLFWwindow* window) {
         
         // Describe the fragment shader and its output
         .fragment = to_ptr( WGPUFragmentState{
-            .module = shader_module,
+            .module = shader_module_2d,
             .entryPoint = WGPUStringView{ "fragment_shader_main", std::string_view("fragment_shader_main").length() },
             
             // Our fragment shader outputs a single color value per pixel.
@@ -452,12 +445,169 @@ void GraphicsManager::WebGPUState::init_pipeline(GLFWwindow* window) {
             } )
     } ) );
 
-    layout = wgpuRenderPipelineGetBindGroupLayout(pipeline, 0);
+    layout_2d = wgpuRenderPipelineGetBindGroupLayout(pipeline_2d, 0);
+}
+
+const struct {
+    float x, y, z;
+    float u, v;
+} cube_vertices[] = {
+    // +Z face
+    { -1,  1,  1,    0, 0 }, // top left
+    { -1, -1,  1,    0, 1 }, // bottom left
+    {  1,  1,  1,    1, 0 }, // top right
+
+    {  1,  1,  1,    1, 0 }, // top right
+    { -1, -1,  1,    0, 1 }, // bottom left
+    {  1, -1,  1,    1, 1 }, // bottom right
+
+
+    // -Z face
+    {  1,  1, -1,    1, 0 }, // top right
+    { -1, -1, -1,    0, 1 }, // bottom left
+    { -1,  1, -1,    0, 0 }, // top left
+
+    {  1, -1, -1,    1, 1 }, // bottom right
+    { -1, -1, -1,    0, 1 }, // bottom left
+    {  1,  1, -1,    1, 0 }, // top right
+    
+
+    // +Y face
+    { -1,  1, -1,    0, 0 }, // top left
+    { -1,  1,  1,    0, 1 }, // bottom left
+    {  1,  1, -1,    1, 0 }, // top right
+
+    {  1,  1, -1,    1, 0 }, // top right
+    { -1,  1,  1,    0, 1 }, // bottom left
+    {  1,  1,  1,    1, 1 }, // bottom right
+    
+
+    // -Y face
+    {  1, -1, -1,    1, 0 }, // top right
+    { -1, -1,  1,    0, 1 }, // bottom left
+    { -1, -1, -1,    0, 0 }, // top left
+
+    {  1, -1,  1,    1, 1 }, // bottom right
+    { -1, -1,  1,    0, 1 }, // bottom left
+    {  1, -1, -1,    1, 0 }, // top right
+
+
+    // +X face
+    {  1,  1,  1,    0, 0 }, // top left
+    {  1, -1,  1,    0, 1 }, // bottom left
+    {  1,  1, -1,    1, 0 }, // top right
+
+    {  1,  1, -1,    1, 0 }, // top right
+    {  1, -1,  1,    0, 1 }, // bottom left
+    {  1, -1, -1,    1, 1 }, // bottom right
+
+
+    // -X face
+    { -1,  1, -1,    1, 0 }, // top right
+    { -1, -1,  1,    0, 1 }, // bottom left
+    { -1,  1,  1,    0, 0 }, // top left
+
+    { -1, -1, -1,    1, 1 }, // bottom right
+    { -1, -1,  1,    0, 1 }, // bottom left
+    { -1,  1, -1,    1, 0 }, // top right
+};
+
+void GraphicsManager::WebGPUState::init_pipeline_3d() {
+    // lifted from webgpu samples
+
+    cube_vertex_buffer = wgpuDeviceCreateBuffer(device, to_ptr(WGPUBufferDescriptor {
+        .label = WGPUStringView( "2D Vertex Buffer", WGPU_STRLEN ),
+        .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
+        .size = sizeof(cube_vertices)
+    }));
+    wgpuQueueWriteBuffer(queue, cube_vertex_buffer, 0, cube_vertices, sizeof(cube_vertices));
+
+    uniforms_buffer_3d = wgpuDeviceCreateBuffer( device, to_ptr( WGPUBufferDescriptor{
+        .label = WGPUStringView( "Uniform Buffer", WGPU_STRLEN ),
+        .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform,
+        .size = sizeof(Uniforms2D)
+    }) );
+
+    WGPUShaderSourceWGSL source_desc = {};
+    source_desc.chain.sType = WGPUSType_ShaderSourceWGSL;
+    source_desc.code = WGPUStringView( gpipeline_3d_shaderData, std::string_view(gpipeline_3d_shaderData).length() );
+    // Point to the code descriptor from the shader descriptor.
+    WGPUShaderModuleDescriptor shader_desc = {};
+    shader_desc.nextInChain = &source_desc.chain;
+    shader_module_3d = wgpuDeviceCreateShaderModule( device, &shader_desc );   
+
+    pipeline_3d = wgpuDeviceCreateRenderPipeline(device, to_ptr(WGPURenderPipelineDescriptor {
+        .vertex = {
+            .module = shader_module_3d,
+            .entryPoint = WGPUStringView { "vertex", std::string_view("vertex").length() },
+            .bufferCount = 1,
+            .buffers = to_ptr<WGPUVertexBufferLayout>({
+                {
+                    .stepMode = WGPUVertexStepMode_Vertex,
+                    .arrayStride = 5*sizeof(float), // xyz position, uv texcoords
+                    .attributeCount = 2,
+                    .attributes = to_ptr<WGPUVertexAttribute>({
+                        {
+                            .format = WGPUVertexFormat_Float32x3,
+                            .offset = 0,
+                            .shaderLocation = 0
+                        },
+                        {
+                            .format = WGPUVertexFormat_Float32x2,
+                            .offset = 3*sizeof(float),
+                            .shaderLocation = 1
+                        },
+                    }),
+                }
+            }),
+        },
+
+        .primitive = WGPUPrimitiveState { 
+            .topology = WGPUPrimitiveTopology_TriangleList,
+            .cullMode = WGPUCullMode_Back,
+        },
+
+        .depthStencil = to_ptr(WGPUDepthStencilState {
+            .format = WGPUTextureFormat_Depth24Plus,
+            .depthWriteEnabled = WGPUOptionalBool_True,
+            .depthCompare = WGPUCompareFunction_Less,
+        }),
+
+        .multisample = WGPUMultisampleState {
+            .count = 1,
+            .mask = ~0u
+        },
+
+        .fragment = to_ptr(WGPUFragmentState {
+            .module = shader_module_3d,
+            .entryPoint = WGPUStringView{ "fragment", std::string_view("fragment").size() },
+            .targetCount = 1,
+            .targets = to_ptr<WGPUColorTargetState>({
+                .format = wgpuSurfaceGetPreferredFormat(surface, adapter),
+                .blend = to_ptr( WGPUBlendState{
+                    .color = {
+                        .operation = WGPUBlendOperation_Add,
+                        .srcFactor = WGPUBlendFactor_SrcAlpha,
+                        .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha
+                        },
+                    .alpha = {
+                        .operation = WGPUBlendOperation_Add,
+                        .srcFactor = WGPUBlendFactor_Zero,
+                        .dstFactor = WGPUBlendFactor_One
+                        }
+                    } ),
+                .writeMask = WGPUColorWriteMask_All
+            })
+        }),
+    }));
+
+    layout_3d = wgpuRenderPipelineGetBindGroupLayout(pipeline_3d, 0);
 }
 
 GraphicsManager::WebGPUState::WebGPUState(GLFWwindow* window) {
     setup(window);
-    init_pipeline(window);
+    init_pipeline_2d();
+    init_pipeline_3d();
 }
 
 GraphicsManager::GraphicsManager(
@@ -505,28 +655,13 @@ bool GraphicsManager::window_should_close() {
     return glfwWindowShouldClose(window);
 }
 
-void GraphicsManager::draw() {
-    glfwPollEvents();
-
-    // == SETUP SPRITES
-    auto it = engine.ecs->query<Transform, Sprite>();
-    auto entities = std::vector(it.begin(), it.end());
-    std::sort(entities.begin(), entities.end(), [](auto& l, auto& r) {
-        return std::get<Transform*>(l)->position.z < std::get<Transform*>(r)->position.z;
-    });
-
+void GraphicsManager::clear_screen(WGPUTextureView surface_texture_view) {
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(webgpu->device, nullptr);
 
-    WGPUSurfaceTexture surface_texture{};
-    wgpuSurfaceGetCurrentTexture( webgpu->surface, &surface_texture );
-    WGPUTextureView current_texture_view = wgpuTextureCreateView( surface_texture.texture, nullptr );
-
-    // clear screen and begin render pass
-    // const f64 grey_intensity = 0.;
     WGPURenderPassEncoder render_pass = wgpuCommandEncoderBeginRenderPass( encoder, to_ptr<WGPURenderPassDescriptor>({
         .colorAttachmentCount = 1,
         .colorAttachments = to_ptr<WGPURenderPassColorAttachment>({{
-            .view = current_texture_view,
+            .view = surface_texture_view,
             .depthSlice = WGPU_DEPTH_SLICE_UNDEFINED, // not a 3D texture
             .loadOp = WGPULoadOp_Clear,
             .storeOp = WGPUStoreOp_Store,
@@ -535,23 +670,44 @@ void GraphicsManager::draw() {
         }})
     }) );
 
+    wgpuRenderPassEncoderSetPipeline( render_pass, webgpu->pipeline_2d );
+
+    wgpuRenderPassEncoderEnd(render_pass);
+    WGPUCommandBuffer command_buffer = wgpuCommandEncoderFinish( encoder, nullptr );
+    wgpuQueueSubmit( webgpu->queue, 1, &command_buffer );
+}
+
+static bool warn_flag = false;
+void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
+    // == SETUP SPRITES
+    auto it = engine.ecs->query<Transform, Sprite>();
+    auto entities = std::vector(it.begin(), it.end());
+    std::sort(entities.begin(), entities.end(), [](auto& l, auto& r) {
+        return std::get<Transform*>(l)->position.z < std::get<Transform*>(r)->position.z;
+    });
+
     if (entities.size() == 0) {
-        SPDLOG_WARN("no sprites! returning early!");
-
-        wgpuRenderPassEncoderEnd(render_pass);
-
-        WGPUCommandBuffer command_buffer = wgpuCommandEncoderFinish( encoder, nullptr );
-        wgpuQueueSubmit( webgpu->queue, 1, &command_buffer );
-        wgpuSurfacePresent( webgpu->surface );
-
-        wgpuCommandBufferRelease(command_buffer);
-        wgpuRenderPassEncoderRelease(render_pass);
-        wgpuTextureViewRelease(current_texture_view);
-        wgpuTextureRelease(surface_texture.texture);
-        wgpuCommandEncoderRelease(encoder);
-
+        if (!warn_flag) SPDLOG_WARN("no sprites! returning early!");
+        warn_flag = true;
         return;
     }
+    warn_flag = false;
+
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(webgpu->device, nullptr);
+
+    // clear screen and begin render pass
+    // const f64 grey_intensity = 0.;
+    WGPURenderPassEncoder render_pass = wgpuCommandEncoderBeginRenderPass( encoder, to_ptr<WGPURenderPassDescriptor>({
+        .colorAttachmentCount = 1,
+        .colorAttachments = to_ptr<WGPURenderPassColorAttachment>({{
+            .view = surface_texture_view,
+            .depthSlice = WGPU_DEPTH_SLICE_UNDEFINED, // not a 3D texture
+            .loadOp = WGPULoadOp_Load,
+            .storeOp = WGPUStoreOp_Store,
+            // Choose the background color.
+            .clearValue = WGPUColor{ 0, 0, 0, 0 }
+        }})
+    }) );
 
     WGPUBuffer instance_buffer = wgpuDeviceCreateBuffer( webgpu->device, to_ptr( WGPUBufferDescriptor{
         .label = WGPUStringView("Instance Buffer", WGPU_STRLEN),
@@ -560,13 +716,13 @@ void GraphicsManager::draw() {
     }) );
 
     // ready the pipeline
-    wgpuRenderPassEncoderSetPipeline( render_pass, webgpu->pipeline );
-    wgpuRenderPassEncoderSetVertexBuffer( render_pass, 0 /* slot */, webgpu->vertex_buffer, 0, 4*4*sizeof(float) );
+    wgpuRenderPassEncoderSetPipeline( render_pass, webgpu->pipeline_2d );
+    wgpuRenderPassEncoderSetVertexBuffer( render_pass, 0 /* slot */, webgpu->quad_vertex_buffer, 0, 4*4*sizeof(float) );
     wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1 /* slot */, instance_buffer, 0, sizeof(InstanceData) * entities.size());
 
     // == SETUP & UPLOAD UNIFORMS
     // Start with an identity matrix.
-    Uniforms uniforms{};
+    Uniforms2D uniforms{};
     uniforms.projection = mat4{1};
     // Scale x and y by 1/100.
     uniforms.projection[0][0] = uniforms.projection[1][1] = 1.f/100.f;
@@ -581,7 +737,7 @@ void GraphicsManager::draw() {
         uniforms.projection[0][0] *= height;
         uniforms.projection[0][0] /= width;
     }
-    wgpuQueueWriteBuffer( webgpu->queue, webgpu->uniforms_buffer, 0, &uniforms, sizeof(Uniforms) );
+    wgpuQueueWriteBuffer( webgpu->queue, webgpu->uniforms_buffer_2d, 0, &uniforms, sizeof(Uniforms2D) );
 
 
     // draw the little guys
@@ -619,23 +775,102 @@ void GraphicsManager::draw() {
 
     WGPUCommandBuffer command_buffer = wgpuCommandEncoderFinish( encoder, nullptr );
     wgpuQueueSubmit( webgpu->queue, 1, &command_buffer );
-    wgpuSurfacePresent( webgpu->surface );
 
     wgpuCommandBufferRelease(command_buffer);
     wgpuRenderPassEncoderRelease(render_pass);
-    wgpuTextureViewRelease(current_texture_view);
-    wgpuTextureRelease(surface_texture.texture);
     wgpuCommandEncoderRelease(encoder);
     wgpuBufferRelease(instance_buffer);
 }
 
+void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
+    // always draw 1 cube
+    
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(webgpu->device, nullptr);
+    WGPUTextureView depth_texture_view = wgpuTextureCreateView(webgpu->depth_texture, nullptr);
+
+    // clear screen and begin render pass
+    // const f64 grey_intensity = 0.;
+    WGPURenderPassEncoder render_pass = wgpuCommandEncoderBeginRenderPass( encoder, to_ptr<WGPURenderPassDescriptor>({
+        .colorAttachmentCount = 1,
+        .colorAttachments = to_ptr<WGPURenderPassColorAttachment>({{
+            .view = surface_texture_view,
+            .depthSlice = WGPU_DEPTH_SLICE_UNDEFINED, // not a 3D texture
+            .loadOp = WGPULoadOp_Load,
+            .storeOp = WGPUStoreOp_Store,
+            // Choose the background color.
+            .clearValue = WGPUColor{ 0, 0, 0, 0 }
+        }}),
+        .depthStencilAttachment = to_ptr(WGPURenderPassDepthStencilAttachment {
+            .view = depth_texture_view,
+            .depthLoadOp = WGPULoadOp_Clear,
+            .depthStoreOp = WGPUStoreOp_Store,
+            .depthClearValue = 1.,
+        }),
+    }) );
+
+
+    wgpuRenderPassEncoderSetPipeline( render_pass, webgpu->pipeline_3d );
+    wgpuRenderPassEncoderSetVertexBuffer( render_pass, 0 /* slot */, webgpu->cube_vertex_buffer, 0, sizeof(cube_vertices) );
+
+    mat4 projection_matrix = glm::perspective(glm::radians(90.f), 16.f / 9.f, 0.1f, 100.f);
+    mat4 view_matrix = glm::lookAt(
+            vec3(0, 2, -3),
+            vec3(0, 0, 0),
+            vec3(0, 1, 0)
+    );
+    view_matrix = glm::rotate(view_matrix, (float)glfwGetTime(), vec3(0, 1, 0));
+
+    Uniforms3D uniforms{};
+    uniforms.view_projection = projection_matrix * view_matrix;
+    wgpuQueueWriteBuffer(webgpu->queue, webgpu->uniforms_buffer_3d, 0, &uniforms, sizeof(Uniforms3D));
+
+    WGPUBindGroup bind_group = wgpuDeviceCreateBindGroup(webgpu->device, to_ptr(WGPUBindGroupDescriptor {
+        .layout = webgpu->layout_3d,
+        .entryCount = 1,
+        .entries = to_ptr<WGPUBindGroupEntry>({
+            {
+                .binding = 0,
+                .buffer = webgpu->uniforms_buffer_3d,
+                .size = sizeof(Uniforms3D)
+            },
+        }),
+    }));
+
+    wgpuRenderPassEncoderSetBindGroup(render_pass, 0, bind_group, 0, nullptr);
+    wgpuRenderPassEncoderDraw(render_pass, 36, 1, 0, 0);
+
+    wgpuRenderPassEncoderEnd(render_pass);
+    WGPUCommandBuffer command_buffer = wgpuCommandEncoderFinish( encoder, nullptr );
+    wgpuQueueSubmit( webgpu->queue, 1, &command_buffer );
+
+    wgpuCommandBufferRelease(command_buffer);
+    wgpuRenderPassEncoderRelease(render_pass);
+    wgpuCommandEncoderRelease(encoder);
+}
+
+void GraphicsManager::draw() {
+    glfwPollEvents();
+
+    WGPUSurfaceTexture surface_texture{};
+    wgpuSurfaceGetCurrentTexture( webgpu->surface, &surface_texture );
+    WGPUTextureView surface_texture_view = wgpuTextureCreateView( surface_texture.texture, nullptr );
+
+    clear_screen(surface_texture_view);
+    draw_3d(surface_texture_view);
+    draw_sprites(surface_texture_view);
+
+    wgpuSurfacePresent( webgpu->surface );
+    wgpuTextureViewRelease(surface_texture_view);
+    wgpuTextureRelease(surface_texture.texture);
+}
+
 GraphicsManager::~GraphicsManager() {
-    wgpuBindGroupLayoutRelease(webgpu->layout);
-    wgpuRenderPipelineRelease(webgpu->pipeline);
-    wgpuShaderModuleRelease(webgpu->shader_module);
+    wgpuBindGroupLayoutRelease(webgpu->layout_2d);
+    wgpuRenderPipelineRelease(webgpu->pipeline_2d);
+    wgpuShaderModuleRelease(webgpu->shader_module_2d);
     wgpuSamplerRelease(webgpu->sampler);
-    wgpuBufferRelease(webgpu->uniforms_buffer);
-    wgpuBufferRelease(webgpu->vertex_buffer);
+    wgpuBufferRelease(webgpu->uniforms_buffer_2d);
+    wgpuBufferRelease(webgpu->quad_vertex_buffer);
 
     wgpuQueueRelease(webgpu->queue);
     wgpuDeviceRelease(webgpu->device);

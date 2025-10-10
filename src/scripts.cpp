@@ -9,6 +9,7 @@
 #include <unordered_set>
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
+#include <filesystem>
 
 #include <spdlog/spdlog.h>
 
@@ -222,6 +223,16 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     #undef LOG_FN
 
 
+    sol::table stages_namespace = lua["Stages"].force();
+    stages_namespace.set_function("change_to", [&](std::string stage_name, sol::object props) {
+        engine.next_stage = stage_name;
+
+        sol::state* _lua = &lua;
+        engine.ecs->command_queue.push_back([=](ECSWorld*) {
+            (*_lua)["Stages"]["props"] = props;
+        });
+    });
+
     sol::table sound_namespace = lua["Sound"].force();
     sound_namespace.set_function("play_sound", [&](std::string sound_name) {
         engine.sound->play_sound(sound_name);
@@ -242,7 +253,10 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
 
     sol::table ecs_namespace = lua["ECS"].force();
     ecs_namespace.set_function("new_entity", [&]() {
-        return engine.ecs->new_entity();
+        Entity ret = engine.ecs->new_entity();
+        if (engine.stage.has_value())
+            engine.ecs->emplace_native_component<Stage>(ret, engine.stage.value());
+        return ret;
     });
     ecs_namespace.set_function("delete_entity", [&](Entity e) {
         engine.ecs->delete_entity(e);
@@ -306,6 +320,8 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
         }
 
         Entity e = engine.ecs->new_entity();
+        if (engine.stage.has_value())
+            engine.ecs->emplace_native_component<Stage>(e, engine.stage.value());
 
 #define STRCMP(object, s) (object.is<std::string>() && object.as<std::string>() == s)
         if (!lifecycle.valid() || STRCMP(lifecycle, "render")) {
@@ -430,6 +446,60 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     );
 
     engine.resources->register_resource_loader(std::make_unique<ScriptLoader>(lua));
+}
+
+void ScriptManager::load_plugins() {
+    // TODO: hot reload
+    auto cwd = std::filesystem::current_path();
+    auto plugins_path = cwd / "plugins";
+
+    if (std::filesystem::exists(plugins_path)) {
+        for (auto& entry : std::filesystem::recursive_directory_iterator(plugins_path)) {
+            if (entry.is_regular_file() and entry.path().extension() == ".lua") {
+                std::string filename = entry.path().lexically_relative(cwd);
+                std::ifstream file_stream(entry.path());
+                std::string lua_code{ std::istreambuf_iterator<char>(file_stream), std::istreambuf_iterator<char>() };
+                sol::protected_function script = lua.load(lua_code, filename);
+                PCALL(script());
+            }
+        }
+    }
+}
+
+void ScriptManager::load_stage(std::string_view stage_name) {
+    // TODO: hot reload
+    auto cwd = std::filesystem::current_path();
+    auto stages_path = cwd / "stages";
+    
+    auto first_script = stages_path / std::format("{}.lua", stage_name);
+    auto stage_path = stages_path / stage_name;
+
+    bool ran_a_script = false;
+
+    if (std::filesystem::exists(first_script)) {
+        ran_a_script = true;
+        std::ifstream file_stream(first_script);
+        std::string lua_code{ std::istreambuf_iterator<char>(file_stream), std::istreambuf_iterator<char>() };
+        sol::protected_function script = lua.load(lua_code, first_script.lexically_relative(cwd));
+        PCALL(script());
+    }
+
+    if (std::filesystem::exists(stage_path)) {
+        for (auto& entry : std::filesystem::recursive_directory_iterator(stage_path)) {
+            if (entry.is_regular_file() and entry.path().extension() == ".lua") {
+                ran_a_script = true;
+                std::string filename = entry.path().lexically_relative(cwd);
+                std::ifstream file_stream(entry.path());
+                std::string lua_code{ std::istreambuf_iterator<char>(file_stream), std::istreambuf_iterator<char>() };
+                sol::protected_function script = lua.load(lua_code, filename);
+                PCALL(script());
+            }
+        }
+    }
+
+    if (!ran_a_script) {
+        SPDLOG_ERROR("changed stage to {}, but no scripts were run to change the stage.", stage_name);
+    }
 }
 
 void ScriptManager::run_script(std::string_view path) {

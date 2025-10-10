@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <functional>
+#include <optional>
 
 namespace motorcar {
     class ResourceManager;
@@ -18,6 +19,9 @@ namespace motorcar {
         std::shared_ptr<GraphicsManager> gfx;
         std::shared_ptr<InputManager> input;
         std::shared_ptr<ECSWorld> ecs;
+
+        std::optional<std::string> stage;
+        std::optional<std::string> next_stage;
 
         double time_simulated_secs = 0.;
         bool keep_running = true;

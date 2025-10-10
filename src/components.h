@@ -163,6 +163,13 @@ namespace motorcar {
     };
     COMPONENT_TYPE_TRAIT(PhysicsSystem, "::physics_system");
 
+    struct Stage {
+        std::string stage_name;
+        Stage(std::string stage_name) : stage_name(stage_name) {}
+        NOT_LUA_CONSTRUCTABLE(Stage)
+    };
+    COMPONENT_TYPE_TRAIT(Stage, "::stage");
+
     void register_components_to_lua(sol::state& state);
     void register_components_to_ecs(ECSWorld& world);
 }

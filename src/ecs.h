@@ -432,7 +432,7 @@ namespace motorcar {
                 }
             } else {
                 // for right now, lets not deal with this annoyance.
-                // the convention is to have Entity *last*.
+                // the convention is to have Entity *first*.
                 static_assert(!std::is_same_v<Entity, First>);
 
                 using Pair = std::pair<Entity, std::tuple<First*>>;

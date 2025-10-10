@@ -1,3 +1,4 @@
+#include "types.h"
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
 
 #include <GLFW/glfw3.h>
@@ -44,8 +45,17 @@ void Engine::run() {
     const f32 SIMULATION_FREQ = 60;
     const u32 MAX_PHYSICS_STEPS = 4;
 
+    scripts->load_plugins();
+    ecs->flush_command_queue();
+
+    stage = "init";
+    scripts->load_stage(stage.value());
+    ecs->flush_command_queue();
+
     // f32 lastFrameTimestamp = glfwGetTime();
     while (!gfx->window_should_close() && keep_running) {
+        next_stage = {};
+
         // remember input state for render systems
         InputManager::State input_state = input->state;
 
@@ -67,6 +77,19 @@ void Engine::run() {
         ecs->flush_command_queue();
         input->clear_key_buffers();
         gfx->draw(); // input->state gets updated here
+
+        if (next_stage.has_value()) {
+            std::string& current_stage = stage.value();
+            for (auto [e, stage] : ecs->query<Entity, Stage>()) {
+                if (stage->stage_name == current_stage) {
+                    ecs->delete_entity(e);
+                }
+            }
+
+            stage = next_stage;
+            scripts->load_stage(next_stage.value());
+            ecs->flush_command_queue();
+        }
 
         // free all the memory we used this frame
         ecs->ocean.reset();

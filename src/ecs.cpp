@@ -78,6 +78,7 @@ void ComponentStorage::remove_component(Entity e) {
 
         // update the metadata
         Entity last_e = entities[len - 1];
+        indices.erase(last_e);
         indices.emplace(last_e, index);
 
         entities[index] = last_e;

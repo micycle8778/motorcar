@@ -200,8 +200,6 @@ namespace {
     }
 
     void load_and_execute_script(Engine& engine, const std::filesystem::path& file_path, bool watch = true) {
-        // BUG: probably not thread-safe what we're doing here
-
         ScriptManager& script_manager = *engine.scripts;
         std::ifstream file_stream { file_path };
         std::string script_name = file_path.lexically_relative(std::filesystem::current_path());
@@ -224,13 +222,12 @@ namespace {
                 Engine* _engine = &engine;
                 ResourceManager::watch_file(file_path, 
                     [=]() { 
-                        load_and_execute_script(*_engine, file_path, false); 
+                        _engine->ecs->command_queue.push_command([=]() {
+                            load_and_execute_script(*_engine, file_path, false); 
+                        });
                     }
                 );
             }
-
-            // this is safe to call because all of the new systems from pcall(script()) are in the command buffer,
-            // so they won't show up for this query
         }
     }
 }
@@ -266,7 +263,7 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
         engine.next_stage = stage_name;
 
         sol::state* _lua = &lua;
-        engine.ecs->command_queue.push_back([=](ECSWorld*) {
+        engine.ecs->command_queue.push_command([=]() {
             (*_lua)["Stages"]["props"] = props;
         });
     });
@@ -309,7 +306,8 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
         if (is_native_component) {
             engine.ecs->remove_native_component_from_entity(e, component);
         } else if (is_lua_component) {
-            engine.ecs->command_queue.push_back([=](ECSWorld* ecs) {
+            ECSWorld* ecs = engine.ecs.get();
+            engine.ecs->command_queue.push_command([=]() {
                 ecs->lua_storage[component][e] = sol::nil;
             });
         }
@@ -381,11 +379,11 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
         if (queries.empty()) {
             if (lifecycle.is<Event>()) {
                 engine.ecs->emplace_native_component<EventHandler>(e, [=](sol::object event_payload) {
-                    callback(event_payload);
+                    pcall(callback, event_payload);
                 }, lifecycle.as<Event>().name);
             } else {
                 engine.ecs->emplace_native_component<System>(e, [=]() {
-                    callback();
+                    pcall(callback);
                 }, 0); // TODO: priority
             }
         }
@@ -413,13 +411,13 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
             if (lifecycle.is<Event>()) {
                 engine.ecs->emplace_native_component<EventHandler>(e, [=](sol::object event_payload) {
                     for (sol::table argument : query(*state, *ecs, queries)) {
-                        callback(argument, event_payload);
+                        pcall(callback, argument, event_payload);
                     }
                 }, lifecycle.as<Event>().name);
             } else {
                 engine.ecs->emplace_native_component<System>(e, [=]() {
                     for (sol::table argument : query(*state, *ecs, queries)) {
-                        callback(argument);
+                        pcall(callback, argument);
                     }
                 }, 0); // TODO: priority
             }
@@ -434,7 +432,7 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
                         arguments2.push_back(query(*state, *ecs, queries[idx]));
                     }
                     f(arguments2.begin(), arguments2.end(), Tables(), [&](Tables& args) {
-                        callback(sol::as_args(args), event_payload);
+                        pcall(callback, sol::as_args(args), event_payload);
                     });
                 }, lifecycle.as<Event>().name);
             } else {
@@ -445,7 +443,7 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
                         arguments2.push_back(query(*state, *ecs, queries[idx]));
                     }
                     f(arguments2.begin(), arguments2.end(), Tables(), [&](Tables& args) {
-                        callback(sol::as_args(args));
+                        pcall(callback, sol::as_args(args));
                     }); 
                 }, 0); // TODO: priority
             }

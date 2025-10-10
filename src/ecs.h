@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <functional>
 #include <optional>
+#include <queue>
 #include <sol/types.hpp>
 #include <stdexcept>
 #include <tuple>
@@ -21,6 +22,8 @@
 
 #define MOTORCAR_EAT_EXCEPTION(code, msg) try { code; } catch (const std::exception& e) { SPDLOG_ERROR(msg, " what(): {}", e.what()); } catch (...) { SPDLOG_ERROR(msg); }
 namespace motorcar {
+    using Command = std::function<void()>;
+
     template <typename ...Components>
     class Query;
 
@@ -245,7 +248,6 @@ namespace motorcar {
     class ECSWorld {
         template <typename ...T>
         friend class Query;
-        friend class ScriptManager;
 
         // usage: lua_storage[component_name][entity] = component
         std::unordered_map<std::type_index, ComponentStorage> native_storage;
@@ -253,8 +255,32 @@ namespace motorcar {
 
         Entity next_entity = 0;
 
+        class CommandQueue {
+            std::mutex mutex;
+            std::deque<Command> queue;
+
+            public:
+                void push_command(Command command) {
+                    std::lock_guard guard { mutex };
+                    queue.push_back(command);
+                }
+
+                Command pop_command() {
+                    std::lock_guard guard { mutex };
+                    Command ret = queue.front();
+                    queue.pop_front();
+                    return ret;
+                }
+
+                bool has_command() {
+                    std::lock_guard guard { mutex };
+                    return !queue.empty();
+                }
+        };
+
+
         public:
-            std::vector<std::function<void(ECSWorld*)>> command_queue;
+            CommandQueue command_queue;
             sol::table lua_storage;
             static Ocean ocean;
 
@@ -281,7 +307,8 @@ namespace motorcar {
 
             template <typename T, typename ...Args>
             void emplace_native_component(Entity e, Args ...args) {
-                command_queue.push_back([=](ECSWorld* self) {
+                ECSWorld* self = this;
+                command_queue.push_command([=]() {
                     if (!self->native_storage.contains(typeid(T))) {
                         self->register_component<T>();
                     }
@@ -296,7 +323,9 @@ namespace motorcar {
                     SPDLOG_ERROR("attempt to insert non-existent component from lua");
                     throw std::runtime_error("attempt to insert non-existent component from lua");
                 }
-                command_queue.push_back([=](ECSWorld* self) {
+
+                ECSWorld* self = this;
+                command_queue.push_command([=]() {
                     self->native_storage.at(self->component_type_indices.at(key)).insert_sol_object(e, object);
                 });
             }
@@ -358,7 +387,7 @@ namespace motorcar {
 
             template <typename T>
             void remove_native_component_from_entity(Entity e) {
-                command_queue.push_back([&]() {
+                command_queue.push_command([&]() {
                     if (native_storage.contains(typeid(T))) {
                         native_storage.at(typeid(T)).remove_component(e);
                     }
@@ -367,7 +396,8 @@ namespace motorcar {
 
             void remove_native_component_from_entity(Entity e, std::string_view component_name) {
                 std::string key = { component_name.begin(), component_name.end() };
-                command_queue.push_back([=](ECSWorld* self) {
+                ECSWorld* self = this;
+                command_queue.push_command([=]() {
                     if (self->component_type_indices.contains(key)) {
                         self->native_storage.at(self->component_type_indices.at(key)).remove_component(e);
                     }
@@ -375,7 +405,8 @@ namespace motorcar {
             }
 
             void delete_entity(Entity e) {
-                command_queue.push_back([=](ECSWorld* self) {
+                ECSWorld* self = this;
+                command_queue.push_command([=]() {
                     for (auto& [_, s] : self->native_storage) {
                         s.remove_component(e);
                     }
@@ -391,14 +422,13 @@ namespace motorcar {
             }
 
             void flush_command_queue() {
-                for (auto command : command_queue) {
+                while (command_queue.has_command()) {
+                    Command command = command_queue.pop_command();
                     if (!command) {
                         SPDLOG_ERROR("command_queue has a null!");
                     }
-                    command(this);
+                    command();
                 }
-                
-                command_queue.clear();
             }
 
             void fire_event(std::string event_name, sol::object event_payload);

@@ -1,3 +1,5 @@
+#include <sol/raii.hpp>
+#include <sol/types.hpp>
 #include <vector>
 
 #include <spdlog/spdlog.h>
@@ -7,65 +9,26 @@
 #include <input.h>
 #include <types.h>
 #include <scripts.h>
+#include <ecs.h>
+#include <components.h>
 
 int main(int argc, char* argv[]) {
     spdlog::set_level(spdlog::level::trace);
 
-    int press_count = 0;
-    int release_count = 0;
+    motorcar::Engine e("helloworld");
 
-    motorcar::Engine e("helloworld", {
-        motorcar::Sprite {
-            .position = motorcar::vec2(0),
-            .scale = motorcar::vec2(25),
-            // .scale = motorcar::vec2(0.1, 0.1),
-            .depth = .3,
-            .texture_path = "bowser.png"
-        },
-        motorcar::Sprite {
-            .position = motorcar::vec2(30),
-            .scale = motorcar::vec2(45),
-            .depth = .1,
-            .texture_path = "watercan.png"
-        },
-        motorcar::Sprite {
-            .position = motorcar::vec2(-50),
-            .scale = motorcar::vec2(16),
-            .depth = .2,
-            .texture_path = "michael-day.png"
-        },
-        motorcar::Sprite {
-            .position = motorcar::vec2(-25, -20),
-            .scale = motorcar::vec2(32),
-            .depth = .2,
-            .texture_path = "insect.png"
-        },
-    });
-    e.run([&]() {
-        e.scripts->run_script("hello.lua");
+    auto watering_can = e.ecs->new_entity();
+    e.ecs->emplace_native_component<motorcar::Sprite>(watering_can, "watercan.png");
+    e.ecs->emplace_native_component<motorcar::Transform>(
+            watering_can, 
+            motorcar::Transform()
+                .with_scale(motorcar::vec3(40))
+                .with_position(motorcar::vec3(0, 0, 1))
+    );
 
-        // e.sprites[0].position.x += 0.1;
+    e.ecs->flush_command_queue();
 
-        // if (e.input->is_key_pressed_this_frame('`')) {
-        //     press_count++;
-        //     SPDLOG_DEBUG("tilde pressed {} times", press_count);
-        // }
-
-        // if (e.input->is_key_repeated_this_frame('f')) {
-        //     SPDLOG_DEBUG("respects paid");
-        // }
-
-        // if (e.input->is_key_released_this_frame("space")) {
-        //     release_count++;
-        //     SPDLOG_DEBUG("space released {} times", release_count);
-        //     e.sound->play_sound("doo-doo.mp3");
-        //     e.scripts->run_script("hello.lua");
-        // }
-
-        // if (e.input->is_key_held_down("f3")) {
-        //     SPDLOG_DEBUG("f3");
-        // }
-    });
+    e.run();
 
     return 0;
 }

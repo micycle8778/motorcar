@@ -98,7 +98,7 @@ FetchContent_Declare(
     glm
     GIT_REPOSITORY https://github.com/g-truc/glm.git
     GIT_TAG e7714885929f1dcd2bdc2531cc99d3c1dc6daa18
-    GIT_SHALLOW TRUE
+    GIT_SHALLOW FALSE
     GIT_PROGRESS TRUE
     )
 FetchContent_MakeAvailable( glm )
@@ -116,8 +116,8 @@ FetchContent_MakeAvailable( lua )
 
 FetchContent_Declare(
     sol2
-    GIT_REPOSITORY https://github.com/yig/sol2
-    GIT_TAG cs425-2025
+    GIT_REPOSITORY https://github.com/ThePhD/sol2
+    GIT_TAG v3.5.0
     GIT_SHALLOW TRUE
     GIT_PROGRESS TRUE
     )
@@ -131,7 +131,10 @@ add_library( motorcar STATIC
     src/sound.cpp
     src/resources.cpp
     src/scripts.cpp
+    src/ecs.cpp
+    src/components.cpp
 )
+
 set_target_properties( motorcar PROPERTIES CXX_STANDARD 20 )
 ## Declare our engine's header path.
 ## This allows targets that depend on the engine to #include them.
@@ -142,6 +145,10 @@ add_executable( helloworld demo/helloworld.cpp )
 set_target_properties( helloworld PROPERTIES CXX_STANDARD 20 )
 target_link_libraries( helloworld PRIVATE motorcar )
 target_copy_webgpu_binaries( helloworld )
+
+add_executable( ecs_test demo/ecs_test.cpp )
+set_target_properties( ecs_test PROPERTIES CXX_STANDARD 20 )
+target_link_libraries( ecs_test PRIVATE motorcar )
 
 # asan + wall + werror
 if (MSVC)

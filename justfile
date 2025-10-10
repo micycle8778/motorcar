@@ -4,7 +4,7 @@ build-debug:
     cmake --build out/Debug
 
 build-release:
-    cmake -DCMAKE_BUILD_TYPE=Release -B out/Release
+    cmake -DCMAKE_BUILD_TYPE=Release -B out/Debug
     cmake --build out/Release
 
 run-debug: build-debug

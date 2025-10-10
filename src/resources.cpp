@@ -1,11 +1,12 @@
+// BUG: the usage of svhasher falsely assumes that the hashes will never collide
+// there hasn't been a hash collision yet, but it will be annoying when it happens
+
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
 
 #include <filesystem>
 #include <fstream>
 #include <string_view>
 
-#include "soloud.h"
-#include "soloud_wav.h"
 #include "spdlog/spdlog.h"
 
 #include "resources.h"
@@ -72,7 +73,7 @@ std::filesystem::path ResourceManager::convert_path(std::string_view path) {
 
 bool motorcar::ResourceManager::load_resource(std::string_view resource_path) {
    // maybe we loaded it already?
-    if (path_to_resource_map.contains(resource_path)) {
+    if (path_to_resource_map.contains(svhasher{}(resource_path))) {
         return true;
     }
 
@@ -92,7 +93,7 @@ bool motorcar::ResourceManager::load_resource(std::string_view resource_path) {
     for (auto& loader : resource_loaders) {
         std::optional<Resource> maybe_resource = loader->load_resource(real_path, file_stream, resource_path);
         if (maybe_resource.has_value()) {
-            path_to_resource_map.insert(std::make_pair(resource_path, std::move(*maybe_resource)));
+            path_to_resource_map.insert(std::make_pair(svhasher{}(resource_path), std::move(*maybe_resource)));
             return true;
         }
     }
@@ -106,7 +107,7 @@ void motorcar::ResourceManager::insert_resource(std::string_view resource_path, 
         SPDLOG_WARN("Virtual resource filenames should start with '::'.");
     }
     
-    path_to_resource_map.insert({ resource_path, std::move(resource) /* ??? how tf does std::move-ing an rvalue work ??? */ });
+    path_to_resource_map.insert({ svhasher{}(resource_path), std::move(resource) /* ??? how tf does std::move-ing an rvalue work ??? */ });
 }
 
 void ResourceManager::register_resource_loader(std::unique_ptr<ILoadResources> resource_loader) {

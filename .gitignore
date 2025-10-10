@@ -10,3 +10,7 @@ build/*
 .vscode/*
 .vs/*
 !.vscode/launch.json
+
+perf.data
+out.perf
+perf.data.old

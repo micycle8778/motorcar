@@ -1,4 +1,4 @@
-#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
+#include "ecs.h"
 
 #include <ranges>
 #include <algorithm>
@@ -16,6 +16,8 @@
 #include "resources.h"
 #include "engine.h"
 #include "types.h"
+#include "ecs.h"
+#include "components.h"
 
 using namespace motorcar;
 
@@ -503,22 +505,15 @@ bool GraphicsManager::window_should_close() {
     return glfwWindowShouldClose(window);
 }
 
-void GraphicsManager::draw(std::span<Sprite> sprites) {
+void GraphicsManager::draw() {
     glfwPollEvents();
 
     // == SETUP SPRITES
-    std::vector<Sprite*> sorted_sprites;
-    sorted_sprites.reserve(sprites.size());
-    for (Sprite& s : sprites) sorted_sprites.push_back(&s);
-
-    std::sort(sorted_sprites.begin(), sorted_sprites.end(), [](Sprite* s1, Sprite* s2) { return s1->depth < s2->depth; });
-
-    WGPUBuffer instance_buffer = wgpuDeviceCreateBuffer( webgpu->device, to_ptr( WGPUBufferDescriptor{
-        .label = WGPUStringView("Instance Buffer", WGPU_STRLEN),
-        .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
-        .size = sizeof(InstanceData) * sprites.size()
-    }) );
-
+    auto it = engine.ecs->query<Transform, Sprite>();
+    auto entities = std::vector(it.begin(), it.end());
+    std::sort(entities.begin(), entities.end(), [](auto& l, auto& r) {
+        return std::get<Transform*>(l)->position.z < std::get<Transform*>(r)->position.z;
+    });
 
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(webgpu->device, nullptr);
 
@@ -540,10 +535,34 @@ void GraphicsManager::draw(std::span<Sprite> sprites) {
         }})
     }) );
 
+    if (entities.size() == 0) {
+        SPDLOG_WARN("no sprites! returning early!");
+
+        wgpuRenderPassEncoderEnd(render_pass);
+
+        WGPUCommandBuffer command_buffer = wgpuCommandEncoderFinish( encoder, nullptr );
+        wgpuQueueSubmit( webgpu->queue, 1, &command_buffer );
+        wgpuSurfacePresent( webgpu->surface );
+
+        wgpuCommandBufferRelease(command_buffer);
+        wgpuRenderPassEncoderRelease(render_pass);
+        wgpuTextureViewRelease(current_texture_view);
+        wgpuTextureRelease(surface_texture.texture);
+        wgpuCommandEncoderRelease(encoder);
+
+        return;
+    }
+
+    WGPUBuffer instance_buffer = wgpuDeviceCreateBuffer( webgpu->device, to_ptr( WGPUBufferDescriptor{
+        .label = WGPUStringView("Instance Buffer", WGPU_STRLEN),
+        .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
+        .size = sizeof(InstanceData) * entities.size()
+    }) );
+
     // ready the pipeline
     wgpuRenderPassEncoderSetPipeline( render_pass, webgpu->pipeline );
     wgpuRenderPassEncoderSetVertexBuffer( render_pass, 0 /* slot */, webgpu->vertex_buffer, 0, 4*4*sizeof(float) );
-    wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1 /* slot */, instance_buffer, 0, sizeof(InstanceData) * sprites.size());
+    wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1 /* slot */, instance_buffer, 0, sizeof(InstanceData) * entities.size());
 
     // == SETUP & UPLOAD UNIFORMS
     // Start with an identity matrix.
@@ -567,11 +586,11 @@ void GraphicsManager::draw(std::span<Sprite> sprites) {
 
     // draw the little guys
     int count = 0;
-    for (Sprite* sprite : sorted_sprites) {
-        auto maybe_tex = engine.resources->get_resource<Texture>(sprite->texture_path);
+    for (auto [transform, sprite] : entities) {
+        auto maybe_tex = engine.resources->get_resource<Texture>(sprite->resource_path);
         if (!maybe_tex.has_value()) {
-            SPDLOG_ERROR("Texture {} not found!", sprite->texture_path);
-            sprite->texture_path = MISSING_TEXTURE_PATH;
+            SPDLOG_ERROR("Texture {} not found!", sprite->resource_path);
+            sprite->resource_path = MISSING_TEXTURE_PATH;
             maybe_tex = engine.resources->get_resource<Texture>(MISSING_TEXTURE_PATH);
         }
 
@@ -584,8 +603,8 @@ void GraphicsManager::draw(std::span<Sprite> sprites) {
         }
 
         InstanceData instance {
-            .translation = vec3(sprite->position.x, sprite->position.y, sprite->depth),
-            .scale = scale * sprite->scale
+            .translation = transform->position,
+            .scale = vec3(scale, 1) * transform->scale
         };
 
         wgpuQueueWriteBuffer( webgpu->queue, instance_buffer, count * sizeof(InstanceData), &instance, sizeof(InstanceData) );

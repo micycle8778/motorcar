@@ -42,10 +42,14 @@ namespace motorcar {
         friend class GraphicsManager;
         friend struct Engine;
 
+        struct State {
+            std::array<bool, GLFW_KEY_LAST + 1> keys_repeated_this_frame;
+            std::array<bool, GLFW_KEY_LAST + 1> keys_pressed_this_frame;
+            std::array<bool, GLFW_KEY_LAST + 1> keys_released_this_frame;
+        };
+
         Engine& engine;
-        std::array<bool, GLFW_KEY_LAST + 1> keys_repeated_this_frame;
-        std::array<bool, GLFW_KEY_LAST + 1> keys_pressed_this_frame;
-        std::array<bool, GLFW_KEY_LAST + 1> keys_released_this_frame;
+        State state;
 
         void clear_key_buffers();
         

@@ -1,9 +1,8 @@
 #pragma once
-#include "glm/fwd.hpp"
 #include "glm/glm.hpp"
-#include <cmath>
+#include <glm/gtc/quaternion.hpp>
 #include <cstdint>
-#include <string_view>
+#include <string>
 
 namespace motorcar {
     typedef uint8_t u8;
@@ -14,7 +13,7 @@ namespace motorcar {
     typedef int32_t i32;
     typedef int64_t i64;
 
-    // WARN: The C standard does *not* guarantee these are 32-bit and 64-bit.
+    // WARN: The C standard does *not* guarantee these are 32-bit and 64-bit.j
     // C++23 has <stdfloat> for this, but we're not writing in C++23, are we?
     typedef float f32;
     typedef double f64;
@@ -28,10 +27,5 @@ namespace motorcar {
     typedef glm::mat3 mat3;
     typedef glm::mat4 mat4;
 
-    struct Sprite {
-        vec2 position = vec2(0);
-        vec2 scale = vec2(1);
-        f32 depth = 0.;
-        std::string texture_path;
-    };
+    typedef size_t Entity;
 }

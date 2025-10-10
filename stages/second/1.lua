@@ -1,0 +1,1 @@
+Log.trace(Stages.props)

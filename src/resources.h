@@ -74,6 +74,8 @@ namespace motorcar {
             std::optional<T*> get_resource(std::string_view resource_path);
             bool load_resource(std::string_view resource_path);
             void insert_resource(std::string_view resource_path, Resource&& resource);
+
+            static void watch_file(std::filesystem::path file_path, std::function<void()> callback);
     };
 }
 

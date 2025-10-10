@@ -46,5 +46,6 @@ void motorcar::register_components_to_ecs(ECSWorld &world) {
     world.register_component<EventHandler>();
     world.register_component<RenderSystem>();
     world.register_component<PhysicsSystem>();
-    world.register_component<Stage>();
+    world.register_component<BoundToStage>();
+    world.register_component<BoundToScript>();
 }

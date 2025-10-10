@@ -24,7 +24,8 @@ namespace {
         });
 
         for (auto [system, _] : v) {
-            system->callback();
+            if (system->callback)
+                system->callback();
         }
     }
 }
@@ -80,7 +81,7 @@ void Engine::run() {
 
         if (next_stage.has_value()) {
             std::string& current_stage = stage.value();
-            for (auto [e, stage] : ecs->query<Entity, Stage>()) {
+            for (auto [e, stage] : ecs->query<Entity, BoundToStage>()) {
                 if (stage->stage_name == current_stage) {
                     ecs->delete_entity(e);
                 }

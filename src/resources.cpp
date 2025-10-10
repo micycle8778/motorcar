@@ -7,6 +7,12 @@
 #include <fstream>
 #include <string_view>
 
+#ifdef __linux__
+#include <sys/inotify.h>
+#include <unistd.h>
+#elif _WIN32
+#endif
+
 #include "spdlog/spdlog.h"
 
 #include "resources.h"
@@ -71,7 +77,42 @@ std::filesystem::path ResourceManager::convert_path(std::string_view path) {
     return assets_path / path;
 }
 
-bool motorcar::ResourceManager::load_resource(std::string_view resource_path) {
+void ResourceManager::watch_file(std::filesystem::path file_path, std::function<void()> callback) {
+// do nothing for emscripten
+#ifdef __EMSCRIPTEN__
+#else
+    std::thread thread {[=]() {
+#ifdef __linux__
+        int fd = inotify_init();
+        if (fd < 0) {
+            SPDLOG_ERROR("inotify_init failed. errno: {}, strerror: {}", errno, strerror(errno));
+            return;
+        }
+
+        int wd = inotify_add_watch(fd, file_path.c_str(), IN_MODIFY);
+        if (wd < 0) {
+            SPDLOG_ERROR("inotify_add_watch failed. errno: {}, strerror: {}", errno, strerror(errno));
+            return;
+        }
+
+        char buffer[1024];
+        while (true) {
+            int length = read(fd, buffer, sizeof(buffer));
+            if (length > 0) {
+                callback();
+            }
+            inotify_add_watch(fd, file_path.c_str(), IN_MODIFY);
+        }
+#elif _WIN32
+#else
+    #warning "No hot reload handling!"
+#endif
+    }};
+    thread.detach();
+#endif
+}
+
+bool ResourceManager::load_resource(std::string_view resource_path) {
    // maybe we loaded it already?
     if (path_to_resource_map.contains(svhasher{}(resource_path))) {
         return true;
@@ -102,7 +143,7 @@ bool motorcar::ResourceManager::load_resource(std::string_view resource_path) {
     return false;
 }
 
-void motorcar::ResourceManager::insert_resource(std::string_view resource_path, Resource&& resource) {
+void ResourceManager::insert_resource(std::string_view resource_path, Resource&& resource) {
     if (!is_virtual_filename(resource_path)) {
         SPDLOG_WARN("Virtual resource filenames should start with '::'.");
     }

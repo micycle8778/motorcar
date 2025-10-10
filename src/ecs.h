@@ -253,9 +253,8 @@ namespace motorcar {
 
         Entity next_entity = 0;
 
-        std::vector<std::function<void(ECSWorld*)>> command_queue;
-
         public:
+            std::vector<std::function<void(ECSWorld*)>> command_queue;
             sol::table lua_storage;
             static Ocean ocean;
 
@@ -393,6 +392,9 @@ namespace motorcar {
 
             void flush_command_queue() {
                 for (auto command : command_queue) {
+                    if (!command) {
+                        SPDLOG_ERROR("command_queue has a null!");
+                    }
                     command(this);
                 }
                 

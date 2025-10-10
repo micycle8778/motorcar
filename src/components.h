@@ -163,12 +163,19 @@ namespace motorcar {
     };
     COMPONENT_TYPE_TRAIT(PhysicsSystem, "::physics_system");
 
-    struct Stage {
+    struct BoundToStage {
         std::string stage_name;
-        Stage(std::string stage_name) : stage_name(stage_name) {}
-        NOT_LUA_CONSTRUCTABLE(Stage)
+        BoundToStage(std::string stage_name) : stage_name(stage_name) {}
+        NOT_LUA_CONSTRUCTABLE(BoundToStage)
     };
-    COMPONENT_TYPE_TRAIT(Stage, "::stage");
+    COMPONENT_TYPE_TRAIT(BoundToStage, "::bound_to_stage");
+
+    struct BoundToScript {
+        std::string script_name;
+        BoundToScript(std::string script_name) : script_name(script_name) {}
+        NOT_LUA_CONSTRUCTABLE(BoundToScript)
+    };
+    COMPONENT_TYPE_TRAIT(BoundToScript, "::bound_to_script");
 
     void register_components_to_lua(sol::state& state);
     void register_components_to_ecs(ECSWorld& world);

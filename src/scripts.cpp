@@ -25,13 +25,6 @@ using Tables = std::vector<sol::table>;
 
 #define TOKCAT2(t1, t2) t1 ## t2
 #define TOKCAT(t1, t2) TOKCAT2(t1, t2)
-#define PCALL(call) \
-    sol::protected_function_result TOKCAT(result, __LINE__) = call; \
-    if (!TOKCAT(result, __LINE__).valid()) { \
-        sol::error error = TOKCAT(result, __LINE__); \
-        spdlog::error("Caught lua error: {}", error.what()); \
-    } \
-    
 
 namespace {
     struct Event {
@@ -43,6 +36,16 @@ namespace {
         const char* filename;
         int lineno;
     }; 
+
+    template <typename ...Args>
+    bool pcall(sol::protected_function f, Args&& ...args) {
+        sol::protected_function_result result = f(args...);
+        if (!result.valid()) {
+            sol::error error = result;
+            spdlog::error("Caught lua error: {}", error.what());
+        }
+        return result.valid();
+    }
 
     std::optional<CallInfo> get_debug_info(sol::state& lua) {
         lua_Debug ld;
@@ -195,6 +198,41 @@ namespace {
             f(begin + 1, end, new_args, callback);
         }
     }
+
+    void load_and_execute_script(Engine& engine, const std::filesystem::path& file_path, bool watch = true) {
+        // BUG: probably not thread-safe what we're doing here
+
+        ScriptManager& script_manager = *engine.scripts;
+        std::ifstream file_stream { file_path };
+        std::string script_name = file_path.lexically_relative(std::filesystem::current_path());
+        if (file_stream.fail()) {
+            SPDLOG_ERROR("failed opening file backing {}.", file_path.c_str());
+            return;
+        }
+
+        std::string code { std::istreambuf_iterator<char>(file_stream), std::istreambuf_iterator<char>() };
+        sol::protected_function script = script_manager.lua.load(code, script_name);
+
+        for (auto [e, bound_to_script] : engine.ecs->query<Entity, BoundToScript>()) {
+            if (bound_to_script->script_name == script_name) {
+                engine.ecs->delete_entity(e);
+            }
+        }
+
+        if (pcall(script)) {
+            if (watch) {
+                Engine* _engine = &engine;
+                ResourceManager::watch_file(file_path, 
+                    [=]() { 
+                        load_and_execute_script(*_engine, file_path, false); 
+                    }
+                );
+            }
+
+            // this is safe to call because all of the new systems from pcall(script()) are in the command buffer,
+            // so they won't show up for this query
+        }
+    }
 }
 
 ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
@@ -255,7 +293,7 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     ecs_namespace.set_function("new_entity", [&]() {
         Entity ret = engine.ecs->new_entity();
         if (engine.stage.has_value())
-            engine.ecs->emplace_native_component<Stage>(ret, engine.stage.value());
+            engine.ecs->emplace_native_component<BoundToStage>(ret, engine.stage.value());
         return ret;
     });
     ecs_namespace.set_function("delete_entity", [&](Entity e) {
@@ -308,7 +346,7 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
         }
 
         for (sol::table argument : query(lua, *engine.ecs, components)) {
-            PCALL(callback(argument));
+            pcall(callback, argument);
         }
     });
     ecs_namespace.set_function("register_system", [&](sol::table queries, sol::protected_function callback, sol::object lifecycle) {
@@ -320,8 +358,12 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
         }
 
         Entity e = engine.ecs->new_entity();
-        if (engine.stage.has_value())
-            engine.ecs->emplace_native_component<Stage>(e, engine.stage.value());
+        if (engine.stage.has_value()) {
+            engine.ecs->emplace_native_component<BoundToStage>(e, engine.stage.value());
+        }
+
+        auto call_info = get_debug_info(lua).value();
+        engine.ecs->emplace_native_component<BoundToScript>(e, call_info.filename);
 
 #define STRCMP(object, s) (object.is<std::string>() && object.as<std::string>() == s)
         if (!lifecycle.valid() || STRCMP(lifecycle, "render")) {
@@ -456,11 +498,7 @@ void ScriptManager::load_plugins() {
     if (std::filesystem::exists(plugins_path)) {
         for (auto& entry : std::filesystem::recursive_directory_iterator(plugins_path)) {
             if (entry.is_regular_file() and entry.path().extension() == ".lua") {
-                std::string filename = entry.path().lexically_relative(cwd);
-                std::ifstream file_stream(entry.path());
-                std::string lua_code{ std::istreambuf_iterator<char>(file_stream), std::istreambuf_iterator<char>() };
-                sol::protected_function script = lua.load(lua_code, filename);
-                PCALL(script());
+                load_and_execute_script(engine, entry.path());
             }
         }
     }
@@ -478,37 +516,19 @@ void ScriptManager::load_stage(std::string_view stage_name) {
 
     if (std::filesystem::exists(first_script)) {
         ran_a_script = true;
-        std::ifstream file_stream(first_script);
-        std::string lua_code{ std::istreambuf_iterator<char>(file_stream), std::istreambuf_iterator<char>() };
-        sol::protected_function script = lua.load(lua_code, first_script.lexically_relative(cwd));
-        PCALL(script());
+        load_and_execute_script(engine, first_script);
     }
 
     if (std::filesystem::exists(stage_path)) {
         for (auto& entry : std::filesystem::recursive_directory_iterator(stage_path)) {
             if (entry.is_regular_file() and entry.path().extension() == ".lua") {
                 ran_a_script = true;
-                std::string filename = entry.path().lexically_relative(cwd);
-                std::ifstream file_stream(entry.path());
-                std::string lua_code{ std::istreambuf_iterator<char>(file_stream), std::istreambuf_iterator<char>() };
-                sol::protected_function script = lua.load(lua_code, filename);
-                PCALL(script());
+                load_and_execute_script(engine, entry.path());
             }
         }
     }
 
     if (!ran_a_script) {
         SPDLOG_ERROR("changed stage to {}, but no scripts were run to change the stage.", stage_name);
-    }
-}
-
-void ScriptManager::run_script(std::string_view path) {
-    auto maybe_script = engine.resources->get_resource<sol::protected_function>(path);
-    if (!maybe_script.has_value()) {
-        spdlog::error("Could not load script {}.", path);
-    } else {
-        // run the script specified by the path
-        sol::protected_function script = *maybe_script.value();
-        PCALL(script());
     }
 }

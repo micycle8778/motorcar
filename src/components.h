@@ -1,6 +1,7 @@
 #pragma once
 #include "ecs.h"
 #include "types.h"
+#include <sol/forward.hpp>
 #include <sol/sol.hpp>
 #include <stdexcept>
 
@@ -118,6 +119,29 @@ namespace motorcar {
     };
     COMPONENT_TYPE_TRAIT(Transform, "transform");
 
+    struct GlobalTransform {
+        mat4 model;
+        mat3 normal;
+        GlobalTransform(mat4 model, mat3 normal) : model(model), normal(normal) {}
+        NOT_LUA_CONSTRUCTABLE(GlobalTransform);
+    };
+    COMPONENT_TYPE_TRAIT(GlobalTransform, "global_transform");
+
+    struct Parent {
+        Entity parent;
+        Parent(Entity parent) : parent(parent) {}
+        Parent(sol::object object) {
+            if (object.is<Parent>()) {
+                *this = object.as<Parent>();
+            } else if (object.is<Entity>())
+                *this = Parent(object.as<Entity>());
+            else {
+                throw std::runtime_error("object is not convertible to Parent");
+            }
+        }
+    };
+    COMPONENT_TYPE_TRAIT(Parent, "parent");
+
     struct Velocity {
         vec3 v;
 
@@ -204,7 +228,7 @@ namespace motorcar {
             } else if (object.is<GLTF>()) {
                 *this = object.as<GLTF>();
             } else {
-                throw std::runtime_error("object is not convertible to Sprite");
+                throw std::runtime_error("object is not convertible to GLTF");
             }
         }
     };
@@ -223,7 +247,7 @@ namespace motorcar {
             } else if (object.is<Albedo>()) {
                 *this = object.as<Albedo>();
             } else {
-                throw std::runtime_error("object is not convertible to Sprite");
+                throw std::runtime_error("object is not convertible to Albedo");
             }
         }
     };

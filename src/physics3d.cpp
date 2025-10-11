@@ -45,9 +45,8 @@ struct OBB {
 
     vec3 center;
     
-    OBB(AABB aabb, mat4 _model_matrix, quat rotation) {
+    OBB(AABB aabb, mat4 _model_matrix, mat3 normal_matrix) {
         mat4 model_matrix = glm::scale(_model_matrix, aabb.half_size);
-        mat3 normal_matrix = mat3(rotation);
 
         normals = {
             normal_matrix * vec3(1, 0, 0),
@@ -122,8 +121,8 @@ struct TransformedBody {
     OBB obb;
     f32 radius; // radius of the broad phase circle collider
 
-    TransformedBody(Body body, Transform transform) :
-        obb(body.collider.aabb, transform.model_matrix(), transform.rotation),
+    TransformedBody(Body body, mat4 model_matrix, mat3 normal_matrix) :
+        obb(body.collider.aabb, model_matrix, normal_matrix),
         radius(body.collider.radius)
     {}
 };
@@ -189,8 +188,8 @@ PhysicsManager::PhysicsManager(Engine& engine) : engine(engine) {
     Entity collision_system = engine.ecs->new_entity();
     engine.ecs->emplace_native_component<PhysicsSystem>(collision_system);
     engine.ecs->emplace_native_component<System>(collision_system, [&]() {
-        auto it = engine.ecs->query<Entity, Transform, Body>() | std::views::transform([](auto t) {
-            return std::make_pair(std::get<0>(t), TransformedBody(*std::get<2>(t), *std::get<1>(t)));
+        auto it = engine.ecs->query<Entity, GlobalTransform, Body>() | std::views::transform([](auto t) {
+            return std::make_pair(std::get<0>(t), TransformedBody(*std::get<2>(t), std::get<1>(t)->model, std::get<1>(t)->normal));
         });
 
         std::unordered_map<Entity, std::vector<Entity>> colliding_with_table;

@@ -244,6 +244,10 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     INPUT_METHOD(is_key_repeated_this_frame);
     INPUT_METHOD(is_key_released_this_frame);
     #undef INPUT_METHOD
+    input_namespace.set_function("get_mouse_position", [&]() { return engine.input->get_mouse_position(); });
+    input_namespace.set_function("get_mouse_motion_this_frame", [&]() { return engine.input->get_mouse_motion_this_frame(); });
+    input_namespace.set_function("lock_mouse", [&]() { engine.input->lock_mouse(); });
+    input_namespace.set_function("unlock_mouse", [&]() { engine.input->unlock_mouse(); });
 
 
     sol::table log_namespace = lua["Log"].force();

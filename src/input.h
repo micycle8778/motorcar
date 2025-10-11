@@ -4,6 +4,7 @@
 #include <format>
 #include <ranges>
 #include "GLFW/glfw3.h"
+#include "types.h"
 
 namespace motorcar {
     struct Engine;
@@ -35,7 +36,6 @@ namespace motorcar {
         static constexpr Key key_from_string(std::string_view s);
     };
 
-    // TODO: mouse input
     // TODO: controller input
     // TODO: input action abstraction
     class InputManager {
@@ -46,6 +46,8 @@ namespace motorcar {
             std::array<bool, GLFW_KEY_LAST + 1> keys_repeated_this_frame;
             std::array<bool, GLFW_KEY_LAST + 1> keys_pressed_this_frame;
             std::array<bool, GLFW_KEY_LAST + 1> keys_released_this_frame;
+            vec2 last_mouse_position = vec2(0);
+            vec2 mouse_motion = vec2(0);
         };
 
         Engine& engine;
@@ -54,12 +56,24 @@ namespace motorcar {
         void clear_key_buffers();
         
     public:
+        static const u8 LEFT_CLICK = 163;
+        static const u8 RIGHT_CLICK = 164;
+        static const u8 MIDDLE_CLICK = 165;
+        static const u8 SCROLL_WHEEL_DOWN = 166;
+        static const u8 SCROLL_WHEEL_UP = 167;
+
         InputManager(Engine& engine);
 
         bool is_key_held_down(Key k) const;
         bool is_key_pressed_this_frame(Key k) const;
         bool is_key_repeated_this_frame(Key k) const;
         bool is_key_released_this_frame(Key k) const;
+
+        vec2 get_mouse_position() const;
+        vec2 get_mouse_motion_this_frame() const;
+
+        void lock_mouse();
+        void unlock_mouse();
     };
 }
 
@@ -108,6 +122,16 @@ namespace motorcar {
             if (new_s == "SPACE") keycode = GLFW_KEY_SPACE; else
             if (new_s == "ESC") keycode = GLFW_KEY_ESCAPE; else
             if (new_s == "ESCAPE") keycode = GLFW_KEY_ESCAPE; else
+            if (new_s == "M1") keycode = InputManager::LEFT_CLICK; else
+            if (new_s == "M2") keycode = InputManager::RIGHT_CLICK; else
+            if (new_s == "M3") keycode = InputManager::MIDDLE_CLICK; else
+            if (new_s == "LEFTCLICK") keycode = InputManager::LEFT_CLICK; else
+            if (new_s == "RIGHTCLICK") keycode = InputManager::RIGHT_CLICK; else
+            if (new_s == "MIDDLECLICK") keycode = InputManager::MIDDLE_CLICK; else
+            if (new_s == "SCROLLDOWN") keycode = InputManager::SCROLL_WHEEL_DOWN; else
+            if (new_s == "SCROLLUP") keycode = InputManager::SCROLL_WHEEL_UP; else
+            if (new_s == "SCROLLWHEELDOWN") keycode = InputManager::SCROLL_WHEEL_DOWN; else
+            if (new_s == "SCROLLWHEELUP") keycode = InputManager::SCROLL_WHEEL_UP; else
             KEY_F_COND(1);
             KEY_F_COND(2);
             KEY_F_COND(3);

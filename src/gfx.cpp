@@ -986,7 +986,7 @@ void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
 
 static bool warn_flag_3d = false;
 void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
-    auto it = engine.ecs->query<Entity, GLTF, Transform>() | 
+    auto it = engine.ecs->query<Entity, GLTF, GlobalTransform>() | 
         std::views::filter([&](auto t) { 
             return !std::get<GLTF*>(t)->resource_path.empty();
         }) |
@@ -994,7 +994,7 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
             auto& resource_path = std::get<GLTF*>(t)->resource_path;
             auto maybe_gltf_scene = engine.resources->get_resource<glTFScene>(resource_path); 
 
-            std::optional<std::tuple<Entity, glTFScene*, Transform*>> ret;
+            std::optional<std::tuple<Entity, glTFScene*, GlobalTransform*>> ret;
 
             if (!maybe_gltf_scene.has_value()) {
                 SPDLOG_ERROR("could not get glTF from {}.", resource_path);
@@ -1003,7 +1003,7 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
                 return ret;
             }
 
-            return std::optional(std::make_tuple(std::get<Entity>(t), maybe_gltf_scene.value(), std::get<Transform*>(t)));
+            return std::optional(std::make_tuple(std::get<Entity>(t), maybe_gltf_scene.value(), std::get<GlobalTransform*>(t)));
         }) |
         std::views::filter([&](auto scene) { return scene.has_value(); }) |
         std::views::transform([&](auto scene) { return scene.value(); });
@@ -1056,11 +1056,22 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
     WGPUBindGroupLayout bind_group_layout_3d_2 = wgpuRenderPipelineGetBindGroupLayout(webgpu->pipeline_3d, 1);
 
     mat4 projection_matrix = glm::perspective(glm::radians(90.f), 16.f / 9.f, 0.1f, 100.f);
+
+    GlobalTransform camera_transform = GlobalTransform({1}, {1});
+
+    auto camera_it = engine.ecs->query<GlobalTransform, Camera>();
+    if (!camera_it.empty()) camera_transform = *std::get<GlobalTransform*>(*camera_it.begin());
+
     mat4 view_matrix = glm::lookAt(
-            vec3(0, 3, -2),
-            vec3(0, 0, 0),
-            vec3(0, 1, 0)
+        vec3(camera_transform.model[3]),
+        vec3(camera_transform.model * vec4(vec3(0, 0, -1), 1)),
+        camera_transform.normal * vec3(0, 1, 0)
     );
+    // mat4 view_matrix = glm::lookAt(
+    //         vec3(0, 0, 3),
+    //         vec3(0, 0, 0),
+    //         vec3(0, 1, 0)
+    // );
     // view_matrix = glm::rotate(view_matrix, (f32)glfwGetTime(), vec3(0, 1, 0));
 
     Uniforms3D uniforms{};
@@ -1073,8 +1084,8 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
         Albedo default_albedo = vec4(1.);
         vec4 albedo = engine.ecs->get_native_component<Albedo>(entity).value_or(&default_albedo)->color;
 
-        mat4 model_matrix = transform->model_matrix();
-        mat4 normal_matrix = mat4(transform->rotation);
+        mat4 model_matrix = transform->model;
+        mat4 normal_matrix = transform->normal;
 
         InstanceData3D instance_data {
             model_matrix,

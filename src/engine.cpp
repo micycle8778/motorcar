@@ -1,4 +1,5 @@
 #include "types.h"
+#include <unordered_set>
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
 
 #include <GLFW/glfw3.h>
@@ -27,6 +28,44 @@ namespace {
         for (auto [system, _] : v) {
             if (system->callback)
                 system->callback();
+        }
+    }
+
+    void update_global_transform(ECSWorld& world) {
+        std::unordered_map<Entity, Parent*> parents;
+        std::unordered_map<Entity, Transform*> transforms;
+
+        for (auto [entity, parent] : world.query<Entity, Parent>()) parents[entity] = parent;
+        for (auto [entity, transform] : world.query<Entity, Transform>()) transforms[entity] = transform;
+
+        std::unordered_set<Entity> seen;
+        for (auto [entity, _] : world.query<Entity, Transform>()) {
+            mat4 model = {1};
+            mat3 normal = {1};
+            Entity current = entity;
+            seen.clear();
+
+            while (true) {
+                if (seen.contains(current)) {
+                    SPDLOG_ERROR("loop in parents of {} and {}!", entity, current);
+                    break;
+                }
+
+                if (!transforms.contains(current)) {
+                    SPDLOG_ERROR("entity {} is a parent, but doesn't have a transform!", current);
+                } else {
+                    model = transforms[current]->model_matrix() * model;
+                    normal = transforms[current]->normal_matrix() * normal;
+                }
+
+                if (parents.contains(current)) {
+                    current = parents[current]->parent;
+                } else {
+                    break;
+                }
+            }
+
+            world.emplace_native_component<GlobalTransform>(entity, model, normal);
         }
     }
 }
@@ -74,6 +113,8 @@ void Engine::run() {
 
             ecs->flush_command_queue();
             input->clear_key_buffers();
+            update_global_transform(*ecs);
+
             time_simulated_secs += PHYSICS_DELTA;
             physics_step_allowance--;
         }
@@ -103,6 +144,8 @@ void Engine::run() {
             scripts->load_stage(next_stage.value());
             ecs->flush_command_queue();
         }
+
+        update_global_transform(*ecs);
 
         // free all the memory we used this frame
         ecs->ocean.reset();

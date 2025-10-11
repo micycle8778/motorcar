@@ -2,7 +2,6 @@
 #include "glm/glm.hpp"
 #include <glm/gtc/quaternion.hpp>
 #include <cstdint>
-#include <string>
 
 namespace motorcar {
     typedef uint8_t u8;

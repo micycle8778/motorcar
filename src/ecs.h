@@ -387,9 +387,10 @@ namespace motorcar {
 
             template <typename T>
             void remove_native_component_from_entity(Entity e) {
-                command_queue.push_command([&]() {
-                    if (native_storage.contains(typeid(T))) {
-                        native_storage.at(typeid(T)).remove_component(e);
+                ECSWorld* self = this;
+                command_queue.push_command([=]() {
+                    if (self->native_storage.contains(typeid(T))) {
+                        self->native_storage.at(typeid(T)).remove_component(e);
                     }
                 });
             }

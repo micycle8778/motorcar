@@ -88,6 +88,16 @@ namespace motorcar {
             return ret;
         }
 
+        // TODO: cache this
+        mat4 model_matrix() const {
+            mat4 ret = {1};
+            ret = glm::translate(ret, position);
+            ret = glm::scale(ret, scale);
+            ret = ret * mat4(rotation);
+
+            return ret;
+        }
+
         void translate_by(vec3 translation) {
             *this = translated(translation);
         }

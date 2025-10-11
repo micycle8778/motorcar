@@ -159,6 +159,7 @@ add_library( motorcar STATIC
     src/scripts.cpp
     src/ecs.cpp
     src/components.cpp
+    src/physics3d.cpp
 )
 
 set_target_properties( motorcar PROPERTIES CXX_STANDARD 20 )

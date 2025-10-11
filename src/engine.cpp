@@ -11,6 +11,7 @@
 #include "scripts.h"
 #include "ecs.h"
 #include "components.h"
+#include "physics3d.h"
 
 using namespace motorcar;
 
@@ -37,6 +38,7 @@ Engine::Engine(const std::string_view& name) {
     sound = std::make_shared<SoundManager>(*this);
     ecs = std::make_shared<ECSWorld>();
     scripts = std::make_shared<ScriptManager>(*this);
+    physics = std::make_shared<PhysicsManager>(*this);
 
     register_components_to_lua(scripts->lua);
     register_components_to_ecs(*ecs);

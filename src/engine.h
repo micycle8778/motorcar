@@ -11,6 +11,7 @@ namespace motorcar {
     class InputManager;
     class SoundManager;
     class ScriptManager;
+    class PhysicsManager;
 
     struct Engine {
         std::shared_ptr<ScriptManager> scripts;
@@ -19,6 +20,7 @@ namespace motorcar {
         std::shared_ptr<GraphicsManager> gfx;
         std::shared_ptr<InputManager> input;
         std::shared_ptr<ECSWorld> ecs;
+        std::shared_ptr<PhysicsManager> physics;
 
         std::optional<std::string> stage;
         std::optional<std::string> next_stage;

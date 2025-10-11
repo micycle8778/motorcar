@@ -5,7 +5,7 @@ ECS.insert_component(cube, "gltf", "cube.glb")
 ECS.insert_component(cube, "transform",
     Transform.new()
         :with_position(vec3.new(0, 0, 1))
-        :with_scale(vec3.new(.5))
+        :with_scale(vec3.new(2, .125, .125))
 )
 ECS.insert_component(cube, "body", Body.new(AABB.new()))
 ECS.insert_component(cube, "cube1", {})

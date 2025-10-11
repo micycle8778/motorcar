@@ -1057,7 +1057,7 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
 
     mat4 projection_matrix = glm::perspective(glm::radians(90.f), 16.f / 9.f, 0.1f, 100.f);
     mat4 view_matrix = glm::lookAt(
-            vec3(0, 1, -2),
+            vec3(0, 3, -2),
             vec3(0, 0, 0),
             vec3(0, 1, 0)
     );
@@ -1073,10 +1073,7 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
         Albedo default_albedo = vec4(1.);
         vec4 albedo = engine.ecs->get_native_component<Albedo>(entity).value_or(&default_albedo)->color;
 
-        mat4 model_matrix = {1};
-        model_matrix = glm::translate(model_matrix, transform->position);
-        model_matrix = glm::scale(model_matrix, transform->scale);
-        model_matrix = model_matrix * mat4(transform->rotation);
+        mat4 model_matrix = transform->model_matrix();
         mat4 normal_matrix = mat4(transform->rotation);
 
         InstanceData3D instance_data {

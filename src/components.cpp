@@ -4,6 +4,8 @@
 
 using namespace motorcar;
 
+
+
 void motorcar::register_components_to_lua(sol::state& state) {
     auto transform = state.new_usertype<Transform>("Transform",
         sol::constructors<Transform()>(),
@@ -60,4 +62,6 @@ void motorcar::register_components_to_ecs(ECSWorld &world) {
     world.register_component<PhysicsSystem>();
     world.register_component<BoundToStage>();
     world.register_component<BoundToScript>();
+
+    world.register_component<Camera>();
 }

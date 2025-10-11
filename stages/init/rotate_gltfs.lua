@@ -3,7 +3,7 @@ ECS.register_system({ "entity", "transform", "gltf" }, function(e)
 end)
 
 ECS.register_system({ "transform", "cube1" }, function(e)
-    e.transform.position.x = Engine.clock() % 2
+    e.transform.position.x = -2 + Engine.clock() % 4
 end)
 
 ECS.register_system({ "entity", "body" }, function(e)

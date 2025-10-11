@@ -92,10 +92,15 @@ namespace motorcar {
         mat4 model_matrix() const {
             mat4 ret = {1};
             ret = glm::translate(ret, position);
-            ret = glm::scale(ret, scale);
             ret = ret * mat4(rotation);
+            ret = glm::scale(ret, scale);
 
             return ret;
+        }
+
+        // TODO: cache this
+        mat3 normal_matrix() const {
+            return mat3(rotation);
         }
 
         void translate_by(vec3 translation) {
@@ -224,6 +229,12 @@ namespace motorcar {
     };
     COMPONENT_TYPE_TRAIT(Albedo, "albedo");
 
+    struct Camera {
+        Camera() {}
+        Camera(sol::object) {}
+    };
+    COMPONENT_TYPE_TRAIT(Camera, "camera");
+    
     void register_components_to_lua(sol::state& state);
     void register_components_to_ecs(ECSWorld& world);
 }

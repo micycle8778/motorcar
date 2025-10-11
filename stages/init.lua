@@ -12,6 +12,13 @@ local horse = ECS.new_entity()
 ECS.insert_component(horse, "gltf", "horse.glb")
 ECS.insert_component(horse, "transform",
     Transform.new()
+        :with_position(vec3.new(2, 0, 1))
+)
+
+local horse2 = ECS.new_entity()
+ECS.insert_component(horse2, "gltf", "carrot.glb")
+ECS.insert_component(horse2, "transform",
+    Transform.new()
         :with_position(vec3.new(0, 0, 1))
 )
 

@@ -7,6 +7,8 @@ struct Uniforms {
 @group(0) @binding(1) var texSampler: sampler;
 @group(0) @binding(2) var texData: texture_2d<f32>;
 
+@group(1) @binding(0) var<storage, read> model_matrix: mat4x4f;
+
 struct VertexInput {
     @location(0) position: vec3f,
     @location(1) texcoords: vec2f,
@@ -20,9 +22,9 @@ struct VertexOutput {
 };
 
 @vertex
-fn vertex(in: VertexInput) -> VertexOutput {
+fn vertex(in: VertexInput, @builtin(instance_index) index: u32) -> VertexOutput {
     var out: VertexOutput;
-    out.position = uniforms.view_projection * vec4f(in.position, 1);
+    out.position = uniforms.view_projection * model_matrix * vec4f(in.position, 1);
     out.texcoords = in.texcoords;
     out.normal = in.normal;
     return out;

@@ -3,11 +3,16 @@ struct Uniforms {
     directional_light_hat: vec3f,
 };
 
+struct InstanceData {
+    model_matrix: mat4x4f,
+    normal_matrix: mat3x3f
+};
+
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var texSampler: sampler;
 @group(0) @binding(2) var texData: texture_2d<f32>;
 
-@group(1) @binding(0) var<storage, read> model_matrix: mat4x4f;
+@group(1) @binding(0) var<storage, read> instance_data: InstanceData;
 
 struct VertexInput {
     @location(0) position: vec3f,
@@ -24,9 +29,9 @@ struct VertexOutput {
 @vertex
 fn vertex(in: VertexInput, @builtin(instance_index) index: u32) -> VertexOutput {
     var out: VertexOutput;
-    out.position = uniforms.view_projection * model_matrix * vec4f(in.position, 1);
+    out.position = uniforms.view_projection * instance_data.model_matrix * vec4f(in.position, 1);
     out.texcoords = in.texcoords;
-    out.normal = in.normal;
+    out.normal = instance_data.normal_matrix * in.normal;
     return out;
 }
 

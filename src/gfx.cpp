@@ -75,6 +75,14 @@ namespace {
         //float rotation;
     };
 
+    struct InstanceData3D {
+        mat4 model;
+        // mat3x3f's memory layout is deranged
+        vec4 n0;
+        vec4 n1;
+        vec4 n2;
+    };
+
     struct Uniforms2D {
         mat4 projection;
     };
@@ -1059,21 +1067,29 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
         model_matrix = glm::translate(model_matrix, transform->position);
         model_matrix = glm::scale(model_matrix, transform->scale);
         model_matrix = model_matrix * mat4(transform->rotation);
+        mat4 normal_matrix = mat4(transform->rotation);
 
-        wgpuQueueWriteBuffer(webgpu->queue, matrix_buffer, instance_counter*256, &model_matrix, sizeof(mat4));
+        InstanceData3D instance_data {
+            model_matrix,
+            normal_matrix[0],
+            normal_matrix[1],
+            normal_matrix[2],
+        };
+
+        wgpuQueueWriteBuffer(webgpu->queue, matrix_buffer, instance_counter*256, &instance_data, sizeof(InstanceData3D));
 
         WGPUBindGroup matrix_bind_group = wgpuDeviceCreateBindGroup(webgpu->device, to_ptr(WGPUBindGroupDescriptor {
             .label = WGPUStringView("3D Matrix Bind Group", WGPU_STRLEN),
             .layout = bind_group_layout_3d_2,
             .entryCount = 1,
-                .entries = to_ptr<WGPUBindGroupEntry>({
-                    {
-                        .binding = 0,
-                        .buffer = matrix_buffer,
-                        .offset = instance_counter * 256,
-                        .size = sizeof(mat4),
-                    }
-                })
+            .entries = to_ptr<WGPUBindGroupEntry>({
+                {
+                    .binding = 0,
+                    .buffer = matrix_buffer,
+                    .offset = instance_counter * 256,
+                    .size = sizeof(InstanceData3D),
+                },
+            }),
         }));
 
         wgpuRenderPassEncoderSetBindGroup(render_pass, 1, matrix_bind_group, 0, nullptr);

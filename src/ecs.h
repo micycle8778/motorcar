@@ -442,7 +442,7 @@ namespace motorcar {
             if constexpr (sizeof...(Other) > 0) {
                 if constexpr (std::is_same_v<First, Entity>) {
                     return internal<Other...>(world) |
-                        std::views::transform([](auto& p) {
+                        std::views::transform([](auto p) {
                             return std::make_pair(
                                 std::get<0>(p),
                                 std::tuple_cat(std::make_tuple(std::get<0>(p)), std::get<1>(p))
@@ -455,7 +455,7 @@ namespace motorcar {
                         std::views::filter([&](auto& p) {
                             return cs.has_component(std::get<0>(p));
                         }) |
-                        std::views::transform([&](auto& p) {
+                        std::views::transform([&](auto p) {
                             return std::make_pair(
                                 std::get<0>(p),
                                 std::tuple_cat(std::make_tuple(cs.get_component<First>(std::get<0>(p)).value()), std::get<1>(p))

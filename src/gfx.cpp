@@ -1,3 +1,5 @@
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
+
 #include <cstddef>
 #include <optional>
 #include <ranges>
@@ -10,6 +12,7 @@
 #include "webgpu/webgpu.h"
 #include <glfw3webgpu.h>
 #include <sol/types.hpp>
+
 #include <spdlog/spdlog.h>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -35,6 +38,7 @@ INCTXT(pipeline_2d_shader, "pipeline2d.wgsl");
 INCTXT(pipeline_3d_shader, "pipeline3d.wgsl");
 
 const std::string_view MISSING_TEXTURE_PATH = "::gfx::missing_texture";
+const std::string_view BLANK_TEXTURE_PATH = "::gfx::blank_texture";
 
 struct GraphicsManager::WebGPUState {
     WGPUInstance instance = nullptr;
@@ -81,6 +85,7 @@ namespace {
         vec4 n0;
         vec4 n1;
         vec4 n2;
+        vec4 albedo;
     };
 
     struct Uniforms2D {
@@ -317,7 +322,7 @@ namespace {
                 }));
                 wgpuQueueWriteBuffer(webgpu.queue, vertex_buffer, 0, vertex_data, vertex_data_size);
 
-                std::string texture_resource_path = MISSING_TEXTURE_PATH.data();
+                std::string texture_resource_path = BLANK_TEXTURE_PATH.data();
                 aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
                 aiString texturePath;
                 if (material->GetTexture(aiTextureType_DIFFUSE, 0, &texturePath) == AI_SUCCESS) {
@@ -838,8 +843,10 @@ GraphicsManager::GraphicsManager(
         BLACK,   MAGENTA,
         MAGENTA, BLACK
     };
-
+    const u8 blank_texture_data[] = { 255, 255, 255, 255 };
+    
     engine.resources->insert_resource(MISSING_TEXTURE_PATH, Texture(*webgpu, missing_texture_data, 2, 2));
+    engine.resources->insert_resource(BLANK_TEXTURE_PATH, Texture(*webgpu, blank_texture_data, 1, 1));
 }
 
 bool GraphicsManager::window_should_close() {
@@ -979,7 +986,7 @@ void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
 
 static bool warn_flag_3d = false;
 void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
-    auto it = engine.ecs->query<GLTF, Transform>() | 
+    auto it = engine.ecs->query<Entity, GLTF, Transform>() | 
         std::views::filter([&](auto t) { 
             return !std::get<GLTF*>(t)->resource_path.empty();
         }) |
@@ -987,7 +994,7 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
             auto& resource_path = std::get<GLTF*>(t)->resource_path;
             auto maybe_gltf_scene = engine.resources->get_resource<glTFScene>(resource_path); 
 
-            std::optional<std::tuple<glTFScene*, Transform*>> ret;
+            std::optional<std::tuple<Entity, glTFScene*, Transform*>> ret;
 
             if (!maybe_gltf_scene.has_value()) {
                 SPDLOG_ERROR("could not get glTF from {}.", resource_path);
@@ -996,7 +1003,7 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
                 return ret;
             }
 
-            return std::optional(std::make_tuple(maybe_gltf_scene.value(), std::get<Transform*>(t)));
+            return std::optional(std::make_tuple(std::get<Entity>(t), maybe_gltf_scene.value(), std::get<Transform*>(t)));
         }) |
         std::views::filter([&](auto scene) { return scene.has_value(); }) |
         std::views::transform([&](auto scene) { return scene.value(); });
@@ -1062,7 +1069,10 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
     wgpuQueueWriteBuffer(webgpu->queue, webgpu->uniforms_buffer_3d, 0, &uniforms, sizeof(Uniforms3D));
 
     u32 instance_counter = 0;
-    for (auto [scene, transform] : it) {
+    for (auto [entity, scene, transform] : it) {
+        Albedo default_albedo = vec4(1.);
+        vec4 albedo = engine.ecs->get_native_component<Albedo>(entity).value_or(&default_albedo)->color;
+
         mat4 model_matrix = {1};
         model_matrix = glm::translate(model_matrix, transform->position);
         model_matrix = glm::scale(model_matrix, transform->scale);
@@ -1074,6 +1084,7 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
             normal_matrix[0],
             normal_matrix[1],
             normal_matrix[2],
+            albedo
         };
 
         wgpuQueueWriteBuffer(webgpu->queue, matrix_buffer, instance_counter*256, &instance_data, sizeof(InstanceData3D));

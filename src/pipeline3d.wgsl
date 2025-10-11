@@ -5,7 +5,8 @@ struct Uniforms {
 
 struct InstanceData {
     model_matrix: mat4x4f,
-    normal_matrix: mat3x3f
+    normal_matrix: mat3x3f,
+    albedo: vec4f
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -37,10 +38,10 @@ fn vertex(in: VertexInput, @builtin(instance_index) index: u32) -> VertexOutput 
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4f {
-    var tex_color = textureSample(texData, texSampler, in.texcoords).rgba;
+    var tex_color = textureSample(texData, texSampler, in.texcoords).rgba * instance_data.albedo;
 
     var ambient = .1 * tex_color.rgb;
-    var diffuse_intensity = max(dot(in.normal, -uniforms.directional_light_hat), 0.f);
+    var diffuse_intensity = max(dot(normalize(in.normal), -uniforms.directional_light_hat), 0.f);
     var diffuse = tex_color.rgb * diffuse_intensity;
 
     return vec4f(ambient + diffuse, tex_color.a);

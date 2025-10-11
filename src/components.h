@@ -195,6 +195,25 @@ namespace motorcar {
     };
     COMPONENT_TYPE_TRAIT(GLTF, "gltf");
 
+    struct Albedo {
+        vec4 color;
+        Albedo(vec4 color) : color(color) {}
+        Albedo(vec3 color) : color(vec4(color, 1)) {}
+
+        Albedo(sol::object object) {
+            if (object.is<vec4>()) {
+                color = object.as<vec4>();
+            } else if (object.is<vec3>()) {
+                color = vec4(object.as<vec3>(), 1);
+            } else if (object.is<Albedo>()) {
+                *this = object.as<Albedo>();
+            } else {
+                throw std::runtime_error("object is not convertible to Sprite");
+            }
+        }
+    };
+    COMPONENT_TYPE_TRAIT(Albedo, "albedo");
+
     void register_components_to_lua(sol::state& state);
     void register_components_to_ecs(ECSWorld& world);
 }

@@ -29,6 +29,9 @@ ECS.insert_component(horse2, "transform",
         :with_position(vec3.new(-2, 0, 1))
         :with_scale(vec3.new(1.5))
 )
+ECS.insert_component(horse2, "albedo", vec3.new(.5, 0, 1))
+
+Log.trace("horse2 is " .. tostring(horse2))
 
 ECS.register_system({}, function()
     if Input.is_key_pressed_this_frame("k") then

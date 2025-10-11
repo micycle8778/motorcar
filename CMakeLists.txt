@@ -135,6 +135,20 @@ FetchContent_Declare(
     )
 FetchContent_MakeAvailable( sol2 )
 
+# assimp
+FetchContent_Declare(
+    assimp
+    GIT_REPOSITORY https://github.com/assimp/assimp.git
+    GIT_TAG        fb375dd8c0a032106a2122815fb18dffe0283721
+)
+FetchContent_MakeAvailable(assimp)
+set(ASSIMP_BUILD_TESTS        OFF CACHE INTERNAL "")
+set(ASSIMP_BUILD_ZLIB         ON CACHE INTERNAL "")
+set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE INTERNAL "")
+set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF CACHE INTERNAL "")
+set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF CACHE INTERNAL "")
+set(ASSIMP_BUILD_GLTF_IMPORTER ON CACHE INTERNAL "")
+
 ## Declare the engine library
 add_library( motorcar STATIC
     src/engine.cpp
@@ -151,7 +165,7 @@ set_target_properties( motorcar PROPERTIES CXX_STANDARD 20 )
 ## Declare our engine's header path.
 ## This allows targets that depend on the engine to #include them.
 target_include_directories( motorcar PUBLIC src )
-target_link_libraries( motorcar PUBLIC glfw soloud spdlog::spdlog webgpu glfw3webgpu glm stb sol2 lua_static incbin )
+target_link_libraries( motorcar PUBLIC glfw soloud spdlog::spdlog webgpu glfw3webgpu glm stb sol2 lua_static incbin assimp::assimp )
 
 add_executable( helloworld demo/helloworld.cpp )
 set_target_properties( helloworld PROPERTIES CXX_STANDARD 20 )

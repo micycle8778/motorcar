@@ -23,6 +23,7 @@ namespace motorcar {
         std::optional<std::string> stage;
         std::optional<std::string> next_stage;
 
+        double delta = 0.;
         double time_simulated_secs = 0.;
         bool keep_running = true;
 

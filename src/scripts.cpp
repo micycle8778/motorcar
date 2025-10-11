@@ -1,3 +1,4 @@
+#include "GLFW/glfw3.h"
 #include "components.h"
 #include <functional>
 #include <ranges>
@@ -284,6 +285,13 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     engine_namespace.set_function("quit", [&]() {
         engine.keep_running = false;
     });
+    engine_namespace.set_function("clock", []() {
+        return glfwGetTime();
+    });
+    engine_namespace.set_function("delta", [&]() {
+        return engine.delta;
+    });
+
 
 
     sol::table ecs_namespace = lua["ECS"].force();
@@ -364,10 +372,10 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
         engine.ecs->emplace_native_component<BoundToScript>(e, call_info.filename);
 
 #define STRCMP(object, s) (object.is<std::string>() && object.as<std::string>() == s)
-        if (!lifecycle.valid() || STRCMP(lifecycle, "render")) {
-            engine.ecs->emplace_native_component<RenderSystem>(e);
-        } else if (STRCMP(lifecycle, "physics")) {
+        if (!lifecycle.valid() || STRCMP(lifecycle, "physics")) {
             engine.ecs->emplace_native_component<PhysicsSystem>(e);
+        } else if (STRCMP(lifecycle, "render")) {
+            engine.ecs->emplace_native_component<RenderSystem>(e);
         } else if (lifecycle.is<Event>()) {
             // handle this a little later
         } else {

@@ -12,6 +12,10 @@
 
 #include <incbin.h>
 
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+
 #include "gfx.h"
 #include "resources.h"
 #include "engine.h"
@@ -58,7 +62,7 @@ namespace {
     template< typename T > constexpr const T* to_ptr( const T& val ) { return &val; }
     template< typename T, std::size_t N > constexpr const T* to_ptr( const T (&&arr)[N] ) { return arr; }
 
-    struct InstanceData {
+    struct InstanceData2D {
         vec3 translation;
         vec2 scale;
         //float rotation;
@@ -66,6 +70,11 @@ namespace {
 
     struct Uniforms2D {
         mat4 projection;
+    };
+
+    struct VertexData3D {
+        float x, y, z;
+        float u, v;
     };
 
     struct Uniforms3D {
@@ -211,6 +220,100 @@ namespace {
             stbi_image_free(image_data);
 
             return resource;
+        }
+    };
+
+    struct glTFScene {
+        struct BufferBundle {
+            WGPUBuffer buffer;
+            size_t vertex_count;
+        };
+
+        std::vector<BufferBundle> buffer_bundles;
+
+        glTFScene(motorcar::GraphicsManager::WebGPUState& webgpu, const aiScene* scene, std::string_view resource_path) {
+            // go through every mesh and convert it into usable vertex data on the GPU
+            for (u32 idx = 0; idx < scene->mNumMeshes; idx++) {
+                auto* mesh = scene->mMeshes[idx];
+                size_t vertex_data_size = mesh->mNumFaces * 3 * sizeof(VertexData3D);
+                VertexData3D* vertex_data = static_cast<VertexData3D*>(malloc(vertex_data_size));
+
+                for (u32 face = 0; face < mesh->mNumFaces; face++) {
+                    for (u32 idx = 0; idx < 3; idx++) {
+                        u32 vertex_id = mesh->mFaces[face].mIndices[idx];
+
+                        u32 index = (face * 3) + idx;
+                        vertex_data[index].x = mesh->mVertices[vertex_id].x;
+                        vertex_data[index].y = mesh->mVertices[vertex_id].y;
+                        vertex_data[index].z = mesh->mVertices[vertex_id].z;
+
+                        
+                        if (mesh->mTextureCoords[0]) {
+                            vertex_data[index].u = mesh->mTextureCoords[0][vertex_id].x;
+                            vertex_data[index].v = mesh->mTextureCoords[0][vertex_id].y;
+                        } else {
+                            vertex_data[index].u = 0;
+                            vertex_data[index].v = 0;
+                        }
+                    }
+                }
+
+                WGPUBuffer vertex_buffer = wgpuDeviceCreateBuffer(webgpu.device, to_ptr(WGPUBufferDescriptor {
+                    .label = WGPUStringView(resource_path.data(), resource_path.size()),
+                    .usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
+                    .size = vertex_data_size,
+                }));
+                wgpuQueueWriteBuffer(webgpu.queue, vertex_buffer, 0, vertex_data, vertex_data_size);
+                buffer_bundles.push_back(BufferBundle { vertex_buffer, mesh->mNumFaces * 3 });
+
+                SPDLOG_TRACE("loaded {} vertices", mesh->mNumVertices);
+
+                free(vertex_data);
+            }
+        }
+
+        glTFScene(glTFScene&) = delete;
+        glTFScene& operator=(glTFScene&) = delete;
+        
+        glTFScene(glTFScene&& other) {
+            buffer_bundles = std::move(other.buffer_bundles);
+        }
+
+        glTFScene& operator=(glTFScene&& other) {
+            buffer_bundles = std::move(other.buffer_bundles);
+            return *this;
+        }
+        
+        ~glTFScene() {
+            for (auto bundle : buffer_bundles) {
+                wgpuBufferRelease(bundle.buffer);
+            }
+        }
+    };
+
+    struct glTFSceneLoader : public ILoadResources {
+        std::shared_ptr<GraphicsManager::WebGPUState> webgpu;
+        Assimp::Importer importer;
+        glTFSceneLoader(std::shared_ptr<GraphicsManager::WebGPUState> webgpu) : webgpu(webgpu) {}
+
+        std::optional<Resource> load_resource(const std::filesystem::path& file_path, std::ifstream& file_stream, std::string_view resource_path) override {
+            if (!resource_path.ends_with(".gltf") && !resource_path.ends_with(".glb")) {
+                return {};
+            }
+
+            const aiScene* scene = importer.ReadFile(
+                file_path,
+                aiProcess_Triangulate |
+                aiProcess_FlipUVs     |
+                aiProcess_SortByPType
+            );
+
+            if (nullptr == scene) {
+                SPDLOG_TRACE("failed to load mesh: {}. reason: {}", resource_path, importer.GetErrorString());
+                return {};
+            }
+
+            return glTFScene(*webgpu, scene, resource_path);
         }
     };
 }
@@ -383,19 +486,19 @@ void GraphicsManager::WebGPUState::init_pipeline_2d() {
                     // This data is per-instance. All four vertices will get the same value. Each instance of drawing the vertices will get a different value.
                     // The type, byte offset, and stride (bytes between elements) exactly match the array of `InstanceData` structs we will upload in our draw function.
                     .stepMode = WGPUVertexStepMode_Instance,
-                    .arrayStride = sizeof(InstanceData),
+                    .arrayStride = sizeof(InstanceData2D),
                     .attributeCount = 2,
                     .attributes = to_ptr<WGPUVertexAttribute>({
                         // Translation as a 3D vector.
                         {
                             .format = WGPUVertexFormat_Float32x3,
-                            .offset = offsetof(InstanceData, translation),
+                            .offset = offsetof(InstanceData2D, translation),
                             .shaderLocation = 2
                         },
                         // Scale as a 2D vector for non-uniform scaling.
                         {
                             .format = WGPUVertexFormat_Float32x2,
-                            .offset = offsetof(InstanceData, scale),
+                            .offset = offsetof(InstanceData2D, scale),
                             .shaderLocation = 3
                         }
                         })
@@ -448,10 +551,7 @@ void GraphicsManager::WebGPUState::init_pipeline_2d() {
     layout_2d = wgpuRenderPipelineGetBindGroupLayout(pipeline_2d, 0);
 }
 
-const struct {
-    float x, y, z;
-    float u, v;
-} cube_vertices[] = {
+VertexData3D cube_vertices[] = {
     // +Z face
     { -1,  1,  1,    0, 0 }, // top left
     { -1, -1,  1,    0, 1 }, // bottom left
@@ -564,7 +664,8 @@ void GraphicsManager::WebGPUState::init_pipeline_3d() {
 
         .primitive = WGPUPrimitiveState { 
             .topology = WGPUPrimitiveTopology_TriangleList,
-            .cullMode = WGPUCullMode_Back,
+            .cullMode = WGPUCullMode_None,
+            // .cullMode = WGPUCullMode_Back,
         },
 
         .depthStencil = to_ptr(WGPUDepthStencilState {
@@ -640,6 +741,7 @@ GraphicsManager::GraphicsManager(
 
     webgpu = std::make_shared<WebGPUState>(window);
     engine.resources->register_resource_loader(std::make_unique<TextureLoader>(webgpu));
+    engine.resources->register_resource_loader(std::make_unique<glTFSceneLoader>(webgpu));
 
     #define BLACK 0, 0, 0, 255
     #define MAGENTA 255, 0, 255, 255
@@ -675,9 +777,13 @@ void GraphicsManager::clear_screen(WGPUTextureView surface_texture_view) {
     wgpuRenderPassEncoderEnd(render_pass);
     WGPUCommandBuffer command_buffer = wgpuCommandEncoderFinish( encoder, nullptr );
     wgpuQueueSubmit( webgpu->queue, 1, &command_buffer );
+
+    wgpuRenderPassEncoderRelease(render_pass);
+    wgpuCommandBufferRelease(command_buffer);
+    wgpuCommandEncoderRelease(encoder);
 }
 
-static bool warn_flag = false;
+static bool warn_flag_2d = false;
 void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
     // == SETUP SPRITES
     auto it = engine.ecs->query<Transform, Sprite>();
@@ -687,11 +793,11 @@ void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
     });
 
     if (entities.size() == 0) {
-        if (!warn_flag) SPDLOG_WARN("no sprites! returning early!");
-        warn_flag = true;
+        if (!warn_flag_2d) SPDLOG_WARN("no sprites! returning early!");
+        warn_flag_2d = true;
         return;
     }
-    warn_flag = false;
+    warn_flag_2d = false;
 
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(webgpu->device, nullptr);
 
@@ -712,13 +818,13 @@ void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
     WGPUBuffer instance_buffer = wgpuDeviceCreateBuffer( webgpu->device, to_ptr( WGPUBufferDescriptor{
         .label = WGPUStringView("Instance Buffer", WGPU_STRLEN),
         .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
-        .size = sizeof(InstanceData) * entities.size()
+        .size = sizeof(InstanceData2D) * entities.size()
     }) );
 
     // ready the pipeline
     wgpuRenderPassEncoderSetPipeline( render_pass, webgpu->pipeline_2d );
     wgpuRenderPassEncoderSetVertexBuffer( render_pass, 0 /* slot */, webgpu->quad_vertex_buffer, 0, 4*4*sizeof(float) );
-    wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1 /* slot */, instance_buffer, 0, sizeof(InstanceData) * entities.size());
+    wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1 /* slot */, instance_buffer, 0, sizeof(InstanceData2D) * entities.size());
 
     // == SETUP & UPLOAD UNIFORMS
     // Start with an identity matrix.
@@ -758,12 +864,12 @@ void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
             scale = vec2( 1.0, f32(tex->height)/tex->width );
         }
 
-        InstanceData instance {
+        InstanceData2D instance {
             .translation = transform->position,
             .scale = vec3(scale, 1) * transform->scale
         };
 
-        wgpuQueueWriteBuffer( webgpu->queue, instance_buffer, count * sizeof(InstanceData), &instance, sizeof(InstanceData) );
+        wgpuQueueWriteBuffer( webgpu->queue, instance_buffer, count * sizeof(InstanceData2D), &instance, sizeof(InstanceData2D) );
 
         wgpuRenderPassEncoderSetBindGroup( render_pass, 0, tex->bind_group, 0, nullptr );
         wgpuRenderPassEncoderDraw( render_pass, 4, 1, 0, count );
@@ -782,9 +888,36 @@ void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
     wgpuBufferRelease(instance_buffer);
 }
 
+static bool warn_flag_3d = false;
 void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
-    // always draw 1 cube
-    
+    auto it = engine.ecs->query<GLTF>() | 
+        std::views::filter([&](auto t) { 
+            return !std::get<GLTF*>(t)->resource_path.empty();
+        }) |
+        std::views::transform([&](auto t) { 
+            auto& resource_path = std::get<GLTF*>(t)->resource_path;
+            auto ret = engine.resources->get_resource<glTFScene>(resource_path); 
+
+            if (!ret.has_value()) {
+                SPDLOG_ERROR("could not get glTF from {}.", resource_path);
+                resource_path = "";
+            }
+
+            return ret;
+        }) |
+        std::views::filter([&](auto scene) { return scene.has_value(); }) |
+        std::views::transform([&](auto scene) { return scene.value(); });
+        
+    if (it.begin() == it.end()) {
+        if (!warn_flag_3d) {
+            SPDLOG_TRACE("no GLTFs. skipping!");
+        }
+        warn_flag_3d = true;
+        return;
+    }
+
+    warn_flag_3d = false;
+
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(webgpu->device, nullptr);
     WGPUTextureView depth_texture_view = wgpuTextureCreateView(webgpu->depth_texture, nullptr);
 
@@ -810,15 +943,13 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
 
 
     wgpuRenderPassEncoderSetPipeline( render_pass, webgpu->pipeline_3d );
-    wgpuRenderPassEncoderSetVertexBuffer( render_pass, 0 /* slot */, webgpu->cube_vertex_buffer, 0, sizeof(cube_vertices) );
 
     mat4 projection_matrix = glm::perspective(glm::radians(90.f), 16.f / 9.f, 0.1f, 100.f);
     mat4 view_matrix = glm::lookAt(
-            vec3(0, 2, -3),
+            vec3(0, 1, -2),
             vec3(0, 0, 0),
             vec3(0, 1, 0)
     );
-    view_matrix = glm::rotate(view_matrix, (float)glfwGetTime(), vec3(0, 1, 0));
 
     Uniforms3D uniforms{};
     uniforms.view_projection = projection_matrix * view_matrix;
@@ -837,12 +968,20 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
     }));
 
     wgpuRenderPassEncoderSetBindGroup(render_pass, 0, bind_group, 0, nullptr);
-    wgpuRenderPassEncoderDraw(render_pass, 36, 1, 0, 0);
+    for (glTFScene* scene : it) {
+        for (auto bundle : scene->buffer_bundles) {
+            wgpuRenderPassEncoderSetVertexBuffer(render_pass, 0 /* slot */, bundle.buffer, 0, bundle.vertex_count * sizeof(VertexData3D));
+            wgpuRenderPassEncoderDraw(render_pass, bundle.vertex_count, 1, 0, 0);
+        }
+    }
 
     wgpuRenderPassEncoderEnd(render_pass);
     WGPUCommandBuffer command_buffer = wgpuCommandEncoderFinish( encoder, nullptr );
     wgpuQueueSubmit( webgpu->queue, 1, &command_buffer );
 
+    wgpuCommandBufferRelease(command_buffer);
+    wgpuTextureViewRelease(depth_texture_view);
+    wgpuBindGroupRelease(bind_group);
     wgpuCommandBufferRelease(command_buffer);
     wgpuRenderPassEncoderRelease(render_pass);
     wgpuCommandEncoderRelease(encoder);
@@ -865,6 +1004,13 @@ void GraphicsManager::draw() {
 }
 
 GraphicsManager::~GraphicsManager() {
+    wgpuBufferRelease(webgpu->cube_vertex_buffer);
+    wgpuBufferRelease(webgpu->uniforms_buffer_3d);
+    wgpuShaderModuleRelease(webgpu->shader_module_3d);
+    wgpuRenderPipelineRelease(webgpu->pipeline_3d);
+    wgpuTextureRelease(webgpu->depth_texture);
+    wgpuBindGroupLayoutRelease(webgpu->layout_3d);
+
     wgpuBindGroupLayoutRelease(webgpu->layout_2d);
     wgpuRenderPipelineRelease(webgpu->pipeline_2d);
     wgpuShaderModuleRelease(webgpu->shader_module_2d);

@@ -179,10 +179,21 @@ namespace motorcar {
     };
     COMPONENT_TYPE_TRAIT(BoundToScript, "::bound_to_script");
 
-    struct Cube {
-        DEFAULT_LUA_CONSTRUCTABLE(Cube);
+    struct GLTF {
+        std::string resource_path;
+        GLTF(std::string resource_path) : resource_path(resource_path) {}
+
+        GLTF(sol::object object) {
+            if (object.is<std::string>()) {
+                resource_path = object.as<std::string>();
+            } else if (object.is<GLTF>()) {
+                *this = object.as<GLTF>();
+            } else {
+                throw std::runtime_error("object is not convertible to Sprite");
+            }
+        }
     };
-    COMPONENT_TYPE_TRAIT(Cube, "cube");
+    COMPONENT_TYPE_TRAIT(GLTF, "gltf");
 
     void register_components_to_lua(sol::state& state);
     void register_components_to_ecs(ECSWorld& world);

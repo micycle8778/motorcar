@@ -45,6 +45,7 @@ Engine::Engine(const std::string_view& name) {
 void Engine::run() {
     const f32 SIMULATION_FREQ = 60;
     const u32 MAX_PHYSICS_STEPS = 4;
+    const f32 PHYSICS_DELTA = 1. / SIMULATION_FREQ;
 
     scripts->load_plugins();
     ecs->flush_command_queue();
@@ -53,7 +54,7 @@ void Engine::run() {
     scripts->load_stage(stage.value());
     ecs->flush_command_queue();
 
-    // f32 lastFrameTimestamp = glfwGetTime();
+    f32 lastRenderUpdateTimestamp = glfwGetTime();
     while (!gfx->window_should_close() && keep_running) {
         next_stage = {};
 
@@ -62,10 +63,16 @@ void Engine::run() {
 
         u32 physics_step_allowance = MAX_PHYSICS_STEPS;
         while (glfwGetTime() > time_simulated_secs && physics_step_allowance > 0) {
+            delta = PHYSICS_DELTA;
+            if (physics_step_allowance == 0) {
+                delta = std::max(PHYSICS_DELTA, (f32)(glfwGetTime() - time_simulated_secs));
+            }
+
             run_systems<PhysicsSystem>(*ecs);
+
             ecs->flush_command_queue();
             input->clear_key_buffers();
-            time_simulated_secs += (1. / SIMULATION_FREQ);
+            time_simulated_secs += PHYSICS_DELTA;
             physics_step_allowance--;
         }
 
@@ -73,6 +80,9 @@ void Engine::run() {
 
         // setup input for render systems
         input->state = input_state;
+
+        delta = glfwGetTime() - lastRenderUpdateTimestamp;
+        lastRenderUpdateTimestamp = glfwGetTime();
         run_systems<RenderSystem>(*ecs);
 
         ecs->flush_command_queue();

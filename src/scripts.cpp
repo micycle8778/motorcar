@@ -8,6 +8,7 @@
 #include <sol/raii.hpp>
 #include <stdexcept>
 #include <unordered_set>
+#include <utility>
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
 #include <filesystem>
@@ -40,7 +41,7 @@ namespace {
 
     template <typename ...Args>
     bool pcall(sol::protected_function f, Args&& ...args) {
-        sol::protected_function_result result = f(args...);
+        sol::protected_function_result result = f(std::forward<Args>(args)...);
         if (!result.valid()) {
             sol::error error = result;
             spdlog::error("Caught lua error: {}", error.what());

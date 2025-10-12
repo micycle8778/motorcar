@@ -18,12 +18,22 @@ ECS.register_system({ "global_transform", "transform", "camera_holder" }, functi
     end
 end)
 
-ECS.register_system({ "transform", "camera_holder" }, function(camera_holder)
+ECS.register_system({
+    { "transform", "camera_holder" },
+    { "mouse_sens" }
+}, 
+function(camera_holder, mouse_sens)
+    local x = mouse_sens.mouse_sens.x
     local mouse_motion = Input.get_mouse_motion_this_frame()
-    camera_holder.transform:rotate_by(vec3.new(0, 1, 0), -mouse_motion.x * 0.0025)
-end)
+    camera_holder.transform:rotate_by(vec3.new(0, 1, 0), -mouse_motion.x * x)
+end, "render")
 
-ECS.register_system({ "transform", "camera" }, function(camera)
+ECS.register_system({
+    { "transform", "camera" },
+    { "mouse_sens" }
+}, 
+function(camera, mouse_sens)
+    local x = mouse_sens.mouse_sens.x
     local mouse_motion = Input.get_mouse_motion_this_frame()
-    camera.transform:rotate_by(vec3.new(1, 0, 0), -mouse_motion.y * 0.0025)
-end)
+    camera.transform:rotate_by(vec3.new(1, 0, 0), -mouse_motion.y * x)
+end, "render")

@@ -1,6 +1,8 @@
 #include "GLFW/glfw3.h"
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
 
+#include <spdlog/spdlog.h>
+
 #include "engine.h"
 #include "gfx.h"
 #include "input.h"
@@ -74,7 +76,8 @@ InputManager::InputManager(Engine& engine)
         Engine& engine = *static_cast<Engine*>(glfwGetWindowUserPointer(window));
         InputManager& us = *engine.input;
 
-        u8 key = SCROLL_WHEEL_DOWN ? yoffset < 0 : SCROLL_WHEEL_UP;
+
+        u8 key = yoffset < 0 ? SCROLL_WHEEL_DOWN : SCROLL_WHEEL_UP;
         us.state.keys_pressed_this_frame[key] = true;
     });
 }

@@ -290,7 +290,6 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     });
 
 
-
     sol::table ecs_namespace = lua["ECS"].force();
     ecs_namespace.set_function("new_entity", [&]() {
         Entity ret = engine.ecs->new_entity();
@@ -457,6 +456,14 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     ecs_namespace.set_function("fire_event", [&](std::string event_name, sol::object event_payload) {
         engine.ecs->fire_event(event_name, event_payload);
     });
+
+
+    sol::table random_namespace = lua["Random"].force();
+    random_namespace.set_function("randi", []() { return std::rand(); });
+    random_namespace.set_function("randf", []() { return (f32)std::rand() / (f32)RAND_MAX; });
+    random_namespace.set_function("randi_range", [](int min, int max) { return min + std::rand() % (max - min); });
+    random_namespace.set_function("randf_range", [](f32 min, f32 max) { return min + ((f32)std::rand() / (f32)RAND_MAX) * (max - min); });
+    random_namespace.set_function("pick_random", [](sol::table t) { return t[std::rand() % t.size() + 1]; });
 
 
     lua.new_usertype<Event>("Event", sol::constructors<Event(std::string)>());

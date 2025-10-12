@@ -12,9 +12,12 @@ local aabb
 
 for idx, mesh in ipairs(horse_gltf.mesh_bundles) do
     Log.trace(mesh.name)
+    if mesh.name == "Mesh" then
+        aabb = mesh.aabb
+    end
+
     if mesh.name == "Cube" then
         mesh.should_draw = false
-        aabb = mesh.aabb
     end
 end
 

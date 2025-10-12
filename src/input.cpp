@@ -50,15 +50,20 @@ InputManager::InputManager(Engine& engine)
         Engine& engine = *static_cast<Engine*>(glfwGetWindowUserPointer(window));
         InputManager& us = *engine.input;
 
-        u8 key;
+        u8 key = 0;
         switch (button) {
             case GLFW_MOUSE_BUTTON_LEFT:
                 key = LEFT_CLICK;
+                break;
             case GLFW_MOUSE_BUTTON_RIGHT:
                 key = RIGHT_CLICK;
+                break;
             case GLFW_MOUSE_BUTTON_MIDDLE:
                 key = MIDDLE_CLICK;
+                break;
         }
+
+        SPDLOG_TRACE("{}", key);
 
         if (action == GLFW_RELEASE) {
             us.state.keys_released_this_frame[key] = true;

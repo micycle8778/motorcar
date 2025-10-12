@@ -44,7 +44,7 @@ end, "render")
 ECS.register_system({ "global_transform", "camera" }, function(camera)
     local gt = camera.global_transform
 
-    if Input.is_key_pressed_this_frame("q") then
+    if Input.is_key_pressed_this_frame("left click") then
         local result = Physics.cast_ray(gt:position(), gt:forward())
         if result ~= nil then
             ECS.insert_component(result.entity, "albedo", vec3.new(1, 0, 0))

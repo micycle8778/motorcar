@@ -124,6 +124,15 @@ namespace motorcar {
         mat3 normal;
         GlobalTransform(mat4 model, mat3 normal) : model(model), normal(normal) {}
         NOT_LUA_CONSTRUCTABLE(GlobalTransform);
+
+        vec3 position() const { return model * vec4(vec3(0), 1); }
+
+        vec3 forward() const { return normal * vec3(0, 0, -1); }
+        vec3 backward() const { return normal * vec3(0, 0, 1); }
+        vec3 left() const { return normal * vec3(-1, 0, 0); }
+        vec3 right() const { return normal * vec3(1, 0, 0); }
+        vec3 up() const { return normal * vec3(0, 1, 0); }
+        vec3 down() const { return normal * vec3(0, -1, 0); }
     };
     COMPONENT_TYPE_TRAIT(GlobalTransform, "global_transform");
 

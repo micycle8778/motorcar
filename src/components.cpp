@@ -5,6 +5,17 @@
 using namespace motorcar;
 
 void motorcar::register_components_to_lua(sol::state& state) {
+    auto global_transform = state.new_usertype<GlobalTransform>("GlobalTransform", sol::constructors<>());
+
+    global_transform["position"] = &GlobalTransform::position;
+
+    global_transform["forward"] = &GlobalTransform::forward;
+    global_transform["backward"] = &GlobalTransform::backward;
+    global_transform["left"] = &GlobalTransform::left;
+    global_transform["right"] = &GlobalTransform::right;
+    global_transform["up"] = &GlobalTransform::up;
+    global_transform["down"] = &GlobalTransform::down;
+
     auto transform = state.new_usertype<Transform>("Transform",
         sol::constructors<Transform()>(),
         "position", &Transform::position,

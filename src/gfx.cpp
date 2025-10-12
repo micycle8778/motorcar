@@ -138,12 +138,12 @@ namespace {
             invalidate();
         }
 
-        Texture(GraphicsManager::WebGPUState& webgpu, const u8* image_data, size_t width, size_t height) {
+        Texture(GraphicsManager::WebGPUState& webgpu, const u8* image_data, size_t width, size_t height, std::string_view label) {
             this->width = width;
             this->height = height;
 
             data = wgpuDeviceCreateTexture(webgpu.device, to_ptr(WGPUTextureDescriptor{
-                //.label = WGPUStringView { .data = path.c_str(), .length = WGPU_STRLEN },
+                .label = WGPUStringView { .data = label.data(), .length = label.size() },
                 .usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
                 .dimension = WGPUTextureDimension_2D,
                 .size = { (uint32_t)width, (uint32_t)height, 1 },
@@ -268,7 +268,7 @@ namespace {
 
             SPDLOG_TRACE("Loaded image file {}. Texture size: {}x{}", resource_path, width, height);
 
-            Resource resource = Texture(*webgpu, image_data, width, height);
+            Resource resource = Texture(*webgpu, image_data, width, height, resource_path);
 
             stbi_image_free(image_data);
 
@@ -345,15 +345,20 @@ namespace {
                             std::abort();
                         }
 
-                        int width, height, channels;
-                        u8* image_data = stbi_load_from_memory((u8*)texture->pcData, texture->mWidth, &width, &height, &channels, 4);
                         
-                        Texture texture_resource(webgpu, image_data, width, height);
-                        std::string resource_name = std::format("::{}::{}", resource_path, texture_index);
-                        engine.resources->insert_resource(resource_name, std::move(texture_resource));
-                        texture_resource_path = resource_name;
+                        std::string texture_resource_name = std::format("::{}::{}", resource_path, texture_index);
+                        if (!engine.resources->get_resource<Texture>(texture_resource_name)) {
+                            int width, height, channels;
+                            u8* image_data = stbi_load_from_memory((u8*)texture->pcData, texture->mWidth, &width, &height, &channels, 4);
 
-                        stbi_image_free(image_data);
+                            SPDLOG_TRACE("found texture {} of size {}x{}", texture_index, width, height);
+
+                            Texture texture_resource(webgpu, image_data, width, height, texture_resource_name);
+                            engine.resources->insert_resource(texture_resource_name, std::move(texture_resource));
+                            stbi_image_free(image_data);
+                        }
+                        texture_resource_path = texture_resource_name;
+
                         
                     } else {
                         SPDLOG_CRITICAL("TODO: external textures");
@@ -417,7 +422,7 @@ namespace {
                 file_path,
                 aiProcess_Triangulate |
                 aiProcess_FlipUVs     |
-                aiProcess_GenBoundingBoxes
+                aiProcess_GenBoundingBoxes 
             );
 
             if (nullptr == scene) {
@@ -868,8 +873,8 @@ GraphicsManager::GraphicsManager(
     };
     const u8 blank_texture_data[] = { 255, 255, 255, 255 };
     
-    engine.resources->insert_resource(MISSING_TEXTURE_PATH, Texture(*webgpu, missing_texture_data, 2, 2));
-    engine.resources->insert_resource(BLANK_TEXTURE_PATH, Texture(*webgpu, blank_texture_data, 1, 1));
+    engine.resources->insert_resource(MISSING_TEXTURE_PATH, Texture(*webgpu, missing_texture_data, 2, 2, MISSING_TEXTURE_PATH));
+    engine.resources->insert_resource(BLANK_TEXTURE_PATH, Texture(*webgpu, blank_texture_data, 1, 1, BLANK_TEXTURE_PATH));
 
     engine.scripts->lua.new_usertype<glTFScene::MeshBundle>(
         "MeshBundle", sol::constructors<>(),
@@ -1095,7 +1100,7 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
 
     WGPUBindGroupLayout bind_group_layout_3d_2 = wgpuRenderPipelineGetBindGroupLayout(webgpu->pipeline_3d, 1);
 
-    mat4 projection_matrix = glm::perspective(glm::radians(90.f), 16.f / 9.f, 0.1f, 100.f);
+    mat4 projection_matrix = glm::perspective(glm::radians(90.f), 16.f / 9.f, 0.1f, 1000.f);
 
     GlobalTransform camera_transform = GlobalTransform({1}, {1});
 

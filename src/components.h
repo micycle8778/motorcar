@@ -5,6 +5,9 @@
 #include <sol/sol.hpp>
 #include <stdexcept>
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/quaternion.hpp>
+
 #define COMPONENT_TYPE_TRAIT(type, name) \
     template <>\
     struct ComponentTypeTrait<type> {\
@@ -102,6 +105,12 @@ namespace motorcar {
         // TODO: cache this
         mat3 normal_matrix() const {
             return mat3(rotation);
+        }
+
+        void look_at(vec3 target) {
+            vec3 forward = vec3(0, 0, -1);
+            vec3 direction = glm::normalize(target - position);
+            rotation = glm::rotation(forward, direction);
         }
 
         void translate_by(vec3 translation) {

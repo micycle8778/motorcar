@@ -1,20 +1,21 @@
 -- move player
 ECS.register_system({ "global_transform", "transform", "camera_holder" }, function(camera_holder)
+    local speed = 5
     local gt = camera_holder.global_transform
     if Input.is_key_held_down("a") then
-        camera_holder.transform:translate_by(gt:left() * Engine.delta())
+        camera_holder.transform:translate_by(gt:left() * Engine.delta() * speed)
     end
 
     if Input.is_key_held_down("d") then
-        camera_holder.transform:translate_by(gt:right() * Engine.delta())
+        camera_holder.transform:translate_by(gt:right() * Engine.delta() * speed)
     end
 
     if Input.is_key_held_down("w") then
-        camera_holder.transform:translate_by(gt:forward() * Engine.delta())
+        camera_holder.transform:translate_by(gt:forward() * Engine.delta() * speed)
     end
 
     if Input.is_key_held_down("s") then
-        camera_holder.transform:translate_by(gt:backward() * Engine.delta())
+        camera_holder.transform:translate_by(gt:backward() * Engine.delta() * speed)
     end
 end)
 
@@ -49,15 +50,5 @@ ECS.register_system({ "global_transform", "camera" }, function(camera)
         if result ~= nil then
             ECS.insert_component(result.entity, "albedo", vec3.new(1, 0, 0))
         end
-
-        -- Log.debug("q")
-
-        -- local cube = ECS.new_entity()
-        -- ECS.insert_component(cube, "gltf", "horse.glb")
-        -- ECS.insert_component(cube, "transform", 
-        --     Transform.new()
-        --         :with_position(gt:position() + (gt:forward() * 1))
-        --         :with_scale(vec3.new(0.25, 0.25, 0.25))
-        -- )
     end
 end, "render")

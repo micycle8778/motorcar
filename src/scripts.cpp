@@ -458,6 +458,7 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     });
 
 
+    srand(time(0));
     sol::table random_namespace = lua["Random"].force();
     random_namespace.set_function("randi", []() { return std::rand(); });
     random_namespace.set_function("randf", []() { return (f32)std::rand() / (f32)RAND_MAX; });
@@ -482,7 +483,7 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
         )
     );
 
-    lua.new_usertype<vec3>("vec3",
+    auto v3 = lua.new_usertype<vec3>("vec3",
         sol::constructors<vec3(), vec3(float), vec3(float, float, float)>(),
         "x", &vec3::x,
         "y", &vec3::y,
@@ -496,6 +497,11 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
             [](float f, const vec3& v1) -> vec3 { return f*v1; }
         )
     );
+    v3.set_function("normalized", [](vec3 v) { return glm::normalize(v); });
+
+    auto q = lua.new_usertype<quat>("quat", sol::constructors<quat(), quat(vec3, vec3)>());
+    q.set_function("axis", [](quat q) { return glm::axis(q); });
+    q.set_function("angle", [](quat q) { return glm::angle(q); });
 
     engine.resources->register_resource_loader(std::make_unique<ScriptLoader>(lua));
 }

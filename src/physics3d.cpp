@@ -175,6 +175,19 @@ PhysicsManager::PhysicsManager(Engine& engine) : engine(engine) {
         "entities", &CollidingWith::entities
     );
 
+    sol::table physics_namespce = lua["Physics"].force();
+    physics_namespce.set_function("cast_ray", [&](vec3 origin, vec3 direction) -> sol::object {
+            auto ret = cast_ray(origin, direction);
+
+            if (ret.has_value()) {
+                sol::table t = sol::table(lua, sol::create);
+                t["entity"] = std::get<Entity>(*ret);
+                t["position"] = std::get<vec3>(*ret);
+                return t;
+            }
+            return sol::nil;
+    });
+
     engine.ecs->register_component<Body>();
     engine.ecs->register_component<CollidingWith>();
 
@@ -211,4 +224,67 @@ PhysicsManager::PhysicsManager(Engine& engine) : engine(engine) {
             }
         }
     }, 0);
+}
+
+std::optional<std::pair<Entity, vec3>> PhysicsManager::cast_ray(vec3 origin, vec3 direction) {
+    auto it = engine.ecs->query<Entity, GlobalTransform, Body>();
+
+    Entity ret_e = -1;
+    f32 ret_t = INFINITY;
+
+    for (auto [entity, gt, body] : it) {
+        // the colliders are AABB, so we're gonna raycast against those
+        // first, we have to transform the ray into model space
+        // assuming the ray lives in world space, this is inverse(M) * origin and inverse(N) * direction
+
+        // https://gdbooks.gitbooks.io/3dcollisions/content/Chapter3/raycast_aabb.html
+
+        AABB aabb = body->collider.aabb;
+        vec3 aabb_min = aabb.center - aabb.half_size;
+        vec3 aabb_max = aabb.center + aabb.half_size;
+
+        vec3 _src = glm::inverse(gt->model) * vec4(origin, 1);
+        vec3 _dir = glm::inverse(gt->normal) * direction;
+
+        // compute time of flight for each plane
+        vec3 t_min_v = vec3(
+                (aabb_min.x - _src.x) / _dir.x,
+                (aabb_min.y - _src.y) / _dir.y,
+                (aabb_min.z - _src.z) / _dir.z
+        );
+        vec3 t_max_v = vec3(
+                (aabb_max.x - _src.x) / _dir.x,
+                (aabb_max.y - _src.y) / _dir.y,
+                (aabb_max.z - _src.z) / _dir.z
+        );
+
+        // compute min and max on each plane
+        vec3 t_min2 = glm::min(t_min_v, t_max_v);
+        vec3 t_max2 = glm::max(t_min_v, t_max_v);
+        // compute biggest min and smallest max
+        f32 t_min = std::max(std::max(t_min2.x, t_min2.y), t_min2.z);
+        f32 t_max = std::min(std::min(t_max2.x, t_max2.y), t_max2.z);
+
+        if (t_max < 0) continue;
+        if (t_min > t_max) continue;
+
+        f32 t = t_min < 0 ? t_max : t_min;
+        if (t < ret_t) {
+            ret_t = t;
+            ret_e = entity;
+        }
+
+        if (t_min < 0) {
+            ret_e = entity;
+            ret_t = t_max;
+            return std::make_pair(entity, origin + direction * t_max);
+        }
+        return std::make_pair(entity, origin + direction * t_min);
+    }
+    
+    if (ret_e == (Entity)-1) {
+        return {};
+    } else {
+        return std::make_pair(ret_e, origin + direction * ret_t);
+    }
 }

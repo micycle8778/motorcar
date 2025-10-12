@@ -363,6 +363,12 @@ namespace {
                     // TODO: untextured meshes
                 }
 
+                // SPDLOG_TRACE("{}: ({}, {}, {})   ({}, {}, {})", 
+                //         mesh->mName.C_Str(), 
+                //         mesh->mAABB.mMin.x, mesh->mAABB.mMin.y, mesh->mAABB.mMin.z, 
+                //         mesh->mAABB.mMax.x, mesh->mAABB.mMax.y, mesh->mAABB.mMax.z 
+                // );
+
                 mesh_bundles.push_back(MeshBundle(
                     vertex_buffer, 
                     mesh->mNumFaces * 3, 
@@ -411,7 +417,7 @@ namespace {
                 file_path,
                 aiProcess_Triangulate |
                 aiProcess_FlipUVs     |
-                aiProcess_SortByPType
+                aiProcess_GenBoundingBoxes
             );
 
             if (nullptr == scene) {
@@ -881,8 +887,6 @@ GraphicsManager::GraphicsManager(
     gltf_namespace.set_function("get_gltf", [&](std::string resource_path) {
             return engine.resources->get_resource<glTFScene>(resource_path).value();
     });
-
-    SPDLOG_TRACE("gfx done!");
 }
 
 bool GraphicsManager::window_should_close() {

@@ -1,3 +1,4 @@
+#include <optional>
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
 
 #include <cmath>
@@ -98,6 +99,18 @@ namespace motorcar {
         DEFAULT_LUA_CONSTRUCTABLE(Collider);
     };
 
+    struct KinematicBody {
+        KinematicBody() {}
+        KinematicBody(sol::object) {}
+    };
+    COMPONENT_TYPE_TRAIT(KinematicBody, "kinematic_body");
+
+    struct TriggerBody {
+        TriggerBody() {}
+        TriggerBody(sol::object) {}
+    };
+    COMPONENT_TYPE_TRAIT(TriggerBody, "trigger_body");
+
     struct Body {
         // BodyType body; // static, trigger, kinematic // is static needed?
         Collider collider; // TODO: many colliders
@@ -120,12 +133,12 @@ struct TransformedBody {
     {}
 };
 
-bool bodies_overlap(TransformedBody a, TransformedBody b) {
+std::optional<vec3> bodies_overlap(TransformedBody a, TransformedBody b) {
     f32 min_radius = a.radius + b.radius;
 
     // broad check
     if (glm::distance(a.obb.center, b.obb.center) > min_radius) {
-        return false;
+        return {};
     }
 
     std::array<vec3, 15> normals = {
@@ -150,19 +163,27 @@ bool bodies_overlap(TransformedBody a, TransformedBody b) {
         glm::cross(a.obb.normals[2], b.obb.normals[2]),
     };
 
+    vec3 displacement = vec3(INFINITY);
     for (vec3 normal : normals) {
         // unlikely because like what are the chances with f32's precision
         if (normal == vec3(0.)) [[unlikely]] continue;
+
+        normal = glm::normalize(normal);
 
         auto [a_min, a_max] = a.obb.squish(normal);
         auto [b_min, b_max] = b.obb.squish(normal);
 
         if (!(a_max >= b_min && b_max >= a_min)) {
-            return false;
+            return {};
+        }
+
+        vec3 potential_displacement = normal * (std::min(a_max, b_max) - std::max(a_min, b_min));
+        if (glm::length(potential_displacement) < glm::length(displacement)) {
+            displacement = potential_displacement;
         }
     }
 
-    return true;
+    return displacement;
 };
 
 PhysicsManager::PhysicsManager(Engine& engine) : engine(engine) {
@@ -190,6 +211,8 @@ PhysicsManager::PhysicsManager(Engine& engine) : engine(engine) {
 
     engine.ecs->register_component<Body>();
     engine.ecs->register_component<CollidingWith>();
+    engine.ecs->register_component<KinematicBody>();
+    engine.ecs->register_component<TriggerBody>();
 
     Entity collision_system = engine.ecs->new_entity();
     engine.ecs->emplace_native_component<PhysicsSystem>(collision_system);
@@ -205,9 +228,22 @@ PhysicsManager::PhysicsManager(Engine& engine) : engine(engine) {
             auto [ith_entity, ith_body] = bodies[idx];
             for (u32 jdx = idx + 1; jdx < bodies.size(); jdx++) {
                 auto [jth_entity, jth_body] = bodies[jdx];
-                if (bodies_overlap(ith_body, jth_body)) {
+                if (auto v = bodies_overlap(ith_body, jth_body)) {
                     colliding_with_table[ith_entity].push_back(jth_entity);
                     colliding_with_table[jth_entity].push_back(ith_entity);
+
+                    bool one_is_trigger =
+                        engine.ecs->entity_has_native_component<TriggerBody>(ith_entity) ||
+                        engine.ecs->entity_has_native_component<TriggerBody>(jth_entity);
+
+                    // if neither is a trigger, then we should try to bump out kinematic bodies
+                    if (!one_is_trigger) { 
+                        if (engine.ecs->entity_has_native_component<KinematicBody>(ith_entity)) {
+                            engine.ecs->get_native_component<Transform>(ith_entity).value()->position += v.value();
+                        } else if (engine.ecs->entity_has_native_component<KinematicBody>(jth_entity)) {
+                            engine.ecs->get_native_component<Transform>(jth_entity).value()->position += v.value();
+                        } 
+                    }
                 }
             }
         }

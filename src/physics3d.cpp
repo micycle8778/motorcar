@@ -23,20 +23,13 @@ vec3 ai2glm(T v) {
     return vec3(v.x, v.y, v.z);
 }
 
-struct AABB {
-    vec3 center;
-    vec3 half_size;
+AABB::AABB(aiAABB ai_aabb) {
+    vec3 min = ai2glm(ai_aabb.mMin);
+    vec3 max = ai2glm(ai_aabb.mMax);
 
-    AABB() : center(vec3(0.)), half_size(vec3(1.)) {}
-    AABB(vec3 center, vec3 half_size) : center(center), half_size(half_size) {}
-    AABB(aiAABB ai_aabb) {
-        vec3 min = ai2glm(ai_aabb.mMin);
-        vec3 max = ai2glm(ai_aabb.mMax);
-
-        center = glm::mix(min, max, 0.5);
-        half_size = (max - min) * 0.5f;
-    };
-};
+    center = glm::mix(min, max, 0.5);
+    half_size = (max - min) * 0.5f;
+}
 
 struct OBB {
     // i need three normals and 8 points

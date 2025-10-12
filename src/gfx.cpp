@@ -1,3 +1,4 @@
+#include <sol/raii.hpp>
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
 
 #include <cstddef>
@@ -29,6 +30,7 @@
 #include "engine.h"
 #include "types.h"
 #include "components.h"
+#include "scripts.h"
 
 #define WGPU_STRING_VIEW(label) WGPUStringView(label, strlen(label))
 
@@ -275,13 +277,21 @@ namespace {
     };
 
     struct glTFScene {
-        struct BufferBundle {
+        struct MeshBundle {
             WGPUBuffer buffer;
             size_t vertex_count;
             std::string diffuse_texture;
+            std::string mesh_name;
+
+            bool should_draw = true;
+            AABB aabb;
+
+            MeshBundle(WGPUBuffer buffer, size_t vertex_count, std::string diffuse_texture, std::string mesh_name, AABB aabb) :
+                buffer(buffer), vertex_count(vertex_count), diffuse_texture(diffuse_texture), mesh_name(mesh_name), aabb(aabb)
+            {}
         };
 
-        std::vector<BufferBundle> buffer_bundles;
+        std::vector<MeshBundle> mesh_bundles;
 
         glTFScene(GraphicsManager::WebGPUState& webgpu, const aiScene* scene, std::string_view resource_path, Engine& engine) {
             // go through every mesh and convert it into usable vertex data on the GPU
@@ -353,7 +363,13 @@ namespace {
                     // TODO: untextured meshes
                 }
 
-                buffer_bundles.push_back(BufferBundle { vertex_buffer, mesh->mNumFaces * 3, texture_resource_path });
+                mesh_bundles.push_back(MeshBundle(
+                    vertex_buffer, 
+                    mesh->mNumFaces * 3, 
+                    texture_resource_path,
+                    mesh->mName.C_Str(),
+                    mesh->mAABB
+                ));
 
                 SPDLOG_TRACE("loaded {} vertices", mesh->mNumVertices);
 
@@ -365,16 +381,16 @@ namespace {
         glTFScene& operator=(glTFScene&) = delete;
         
         glTFScene(glTFScene&& other) {
-            buffer_bundles = std::move(other.buffer_bundles);
+            mesh_bundles = std::move(other.mesh_bundles);
         }
 
         glTFScene& operator=(glTFScene&& other) {
-            buffer_bundles = std::move(other.buffer_bundles);
+            mesh_bundles = std::move(other.mesh_bundles);
             return *this;
         }
         
         ~glTFScene() {
-            for (auto bundle : buffer_bundles) {
+            for (auto bundle : mesh_bundles) {
                 wgpuBufferRelease(bundle.buffer);
             }
         }
@@ -803,6 +819,7 @@ GraphicsManager::WebGPUState::WebGPUState(GLFWwindow* window) {
     setup(window);
     init_pipeline_2d();
     init_pipeline_3d();
+
 }
 
 GraphicsManager::GraphicsManager(
@@ -847,6 +864,25 @@ GraphicsManager::GraphicsManager(
     
     engine.resources->insert_resource(MISSING_TEXTURE_PATH, Texture(*webgpu, missing_texture_data, 2, 2));
     engine.resources->insert_resource(BLANK_TEXTURE_PATH, Texture(*webgpu, blank_texture_data, 1, 1));
+
+    engine.scripts->lua.new_usertype<glTFScene::MeshBundle>(
+        "MeshBundle", sol::constructors<>(),
+        "diffuse_texture", &glTFScene::MeshBundle::diffuse_texture,
+        "should_draw", &glTFScene::MeshBundle::should_draw,
+        "aabb", &glTFScene::MeshBundle::aabb,
+        "name", &glTFScene::MeshBundle::mesh_name
+    );
+    engine.scripts->lua.new_usertype<glTFScene>(
+        "glTFScene", sol::constructors<>(),
+        "mesh_bundles", &glTFScene::mesh_bundles
+    );
+
+    sol::table gltf_namespace = engine.scripts->lua["Resources"];
+    gltf_namespace.set_function("get_gltf", [&](std::string resource_path) {
+            return engine.resources->get_resource<glTFScene>(resource_path).value();
+    });
+
+    SPDLOG_TRACE("gfx done!");
 }
 
 bool GraphicsManager::window_should_close() {
@@ -1113,7 +1149,8 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
 
         wgpuRenderPassEncoderSetBindGroup(render_pass, 1, matrix_bind_group, 0, nullptr);
 
-        for (auto bundle : scene->buffer_bundles) {
+        for (auto bundle : scene->mesh_bundles) {
+            if (!bundle.should_draw) continue;
             Texture* texture = engine.resources->get_resource<Texture>(bundle.diffuse_texture).value();
             wgpuRenderPassEncoderSetBindGroup(render_pass, 0, texture->bind_group_3d, 0, nullptr);
             wgpuRenderPassEncoderSetVertexBuffer(render_pass, 0 /* slot */, bundle.buffer, 0, bundle.vertex_count * sizeof(VertexData3D));

@@ -72,12 +72,15 @@ namespace {
 
 Engine::Engine(const std::string_view& name) {
     resources = std::make_shared<ResourceManager>();
-    gfx = std::make_shared<GraphicsManager>(*this, name);
-    input = std::make_shared<InputManager>(*this);
+
     sound = std::make_shared<SoundManager>(*this);
     ecs = std::make_shared<ECSWorld>();
+
     scripts = std::make_shared<ScriptManager>(*this);
     physics = std::make_shared<PhysicsManager>(*this);
+
+    gfx = std::make_shared<GraphicsManager>(*this, name);
+    input = std::make_shared<InputManager>(*this);
 
     register_components_to_lua(scripts->lua);
     register_components_to_ecs(*ecs);

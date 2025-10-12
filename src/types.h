@@ -1,5 +1,6 @@
 #pragma once
 #include "glm/glm.hpp"
+#include "assimp/aabb.h"
 #include <glm/gtc/quaternion.hpp>
 #include <cstdint>
 
@@ -27,4 +28,13 @@ namespace motorcar {
     typedef glm::mat4 mat4;
 
     typedef size_t Entity;
+
+    struct AABB {
+        vec3 center;
+        vec3 half_size;
+
+        AABB() : center(vec3(0.)), half_size(vec3(1.)) {}
+        AABB(vec3 center, vec3 half_size) : center(center), half_size(half_size) {}
+        AABB(aiAABB ai_aabb);
+    };
 }

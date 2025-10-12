@@ -1,18 +1,9 @@
-#include "GLFW/glfw3.h"
-#include "components.h"
-#include <functional>
-#include <ranges>
-#include <sol/as_args.hpp>
-#include <sol/forward.hpp>
-#include <sol/protected_function_result.hpp>
-#include <sol/raii.hpp>
-#include <stdexcept>
+#include <filesystem>
 #include <unordered_set>
-#include <utility>
+
+#include "GLFW/glfw3.h"
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
-#include <filesystem>
-
 #include <spdlog/spdlog.h>
 
 #include "scripts.h"
@@ -21,6 +12,7 @@
 #include "input.h"
 #include "sound.h"
 #include "ecs.h"
+#include "components.h"
 
 using namespace motorcar;
 using Tables = std::vector<sol::table>;

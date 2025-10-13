@@ -364,7 +364,7 @@ namespace motorcar {
                 return native_storage.at(typeid(T)).get_component<T>(e);
             }
 
-            sol::object get_native_component_as_lua_object(Entity e, std::string_view component_name, sol::state& lua) {
+            sol::object get_native_component_as_lua_object(Entity e, std::string component_name, sol::state& lua) {
                 std::string key = { component_name.begin(), component_name.end() };
                 if (!component_type_indices.contains(key)) {
                     return lua_storage[component_name];

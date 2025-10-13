@@ -419,7 +419,7 @@ namespace {
             }
 
             const aiScene* scene = importer.ReadFile(
-                file_path,
+                (char*)file_path.u8string().c_str(),
                 aiProcess_Triangulate |
                 aiProcess_FlipUVs     |
                 aiProcess_GenBoundingBoxes 
@@ -563,7 +563,7 @@ void GraphicsManager::WebGPUState::init_pipeline_2d() {
 
     WGPUShaderSourceWGSL source_desc = {};
     source_desc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    source_desc.code = WGPUStringView( gpipeline_2d_shaderData, std::string_view(gpipeline_2d_shaderData).length() );
+    source_desc.code = WGPUStringView { (char*)gpipeline_2d_shaderData, WGPU_STRLEN };
     // Point to the code descriptor from the shader descriptor.
     WGPUShaderModuleDescriptor shader_desc = {};
     shader_desc.nextInChain = &source_desc.chain;
@@ -745,7 +745,7 @@ void GraphicsManager::WebGPUState::init_pipeline_3d() {
 
     WGPUShaderSourceWGSL source_desc = {};
     source_desc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    source_desc.code = WGPUStringView( gpipeline_3d_shaderData, std::string_view(gpipeline_3d_shaderData).length() );
+    source_desc.code = WGPUStringView( (const char*)gpipeline_3d_shaderData, WGPU_STRLEN );
     // Point to the code descriptor from the shader descriptor.
     WGPUShaderModuleDescriptor shader_desc = {};
     shader_desc.nextInChain = &source_desc.chain;
@@ -849,7 +849,7 @@ GraphicsManager::GraphicsManager(
     // We don't want GLFW to set up a graphics API.
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     // Create the window.
-    window = glfwCreateWindow(window_width, window_height, window_name.data(), nullptr, nullptr);
+    window = glfwCreateWindow(1280, 720, window_name.data(), nullptr, nullptr);
     if( !window )
     {
         const char* error;

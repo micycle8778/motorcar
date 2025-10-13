@@ -196,9 +196,9 @@ namespace {
     void load_and_execute_script(Engine& engine, const std::filesystem::path& file_path, bool watch = true) {
         ScriptManager& script_manager = *engine.scripts;
         std::ifstream file_stream { file_path };
-        std::string script_name = file_path.lexically_relative(std::filesystem::current_path());
+        std::string script_name = file_path.lexically_relative(std::filesystem::current_path()).string();
         if (file_stream.fail()) {
-            SPDLOG_ERROR("failed opening file backing {}.", file_path.c_str());
+            SPDLOG_ERROR("failed opening file backing {}.", file_path.string());
             return;
         }
 
@@ -269,6 +269,9 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     sol::table sound_namespace = lua["Sound"].force();
     sound_namespace.set_function("play_sound", [&](std::string sound_name) {
         engine.sound->play_sound(sound_name);
+    });
+    sound_namespace.set_function("play_music", [&](std::string sound_name) {
+        engine.sound->play_music(sound_name);
     });
 
 
@@ -498,6 +501,7 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
         )
     );
     v3.set_function("normalized", [](vec3 v) { return glm::normalize(v); });
+    v3.set_function("distance_to", [](vec3 v1, vec3 v2) { return glm::distance(v1, v2); });
 
     auto q = lua.new_usertype<quat>("quat", sol::constructors<quat(), quat(vec3, vec3)>());
     q.set_function("axis", [](quat q) { return glm::axis(q); });

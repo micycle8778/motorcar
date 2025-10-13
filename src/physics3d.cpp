@@ -189,7 +189,10 @@ std::optional<vec3> bodies_overlap(TransformedBody a, TransformedBody b) {
 PhysicsManager::PhysicsManager(Engine& engine) : engine(engine) {
     sol::state& lua = engine.scripts->lua;
 
-    lua.new_usertype<AABB>("AABB", sol::constructors<AABB(), AABB(vec3, vec3)>());
+    lua.new_usertype<AABB>("AABB", sol::constructors<AABB(), AABB(vec3, vec3)>(),
+        "center", &AABB::center,
+        "half_size", &AABB::half_size
+    );
     lua.new_usertype<Collider>("Collider", sol::constructors<Collider(AABB)>());
     lua.new_usertype<Body>("Body", sol::constructors<Body(Collider), Body(AABB)>());
     lua.new_usertype<CollidingWith>("CollidingWith", sol::constructors(),
@@ -197,8 +200,8 @@ PhysicsManager::PhysicsManager(Engine& engine) : engine(engine) {
     );
 
     sol::table physics_namespce = lua["Physics"].force();
-    physics_namespce.set_function("cast_ray", [&](vec3 origin, vec3 direction) -> sol::object {
-            auto ret = cast_ray(origin, direction);
+    physics_namespce.set_function("cast_ray", [&](vec3 origin, vec3 direction, Entity excluded) -> sol::object {
+            auto ret = cast_ray(origin, direction, excluded);
 
             if (ret.has_value()) {
                 sol::table t = sol::table(lua, sol::create);
@@ -262,13 +265,14 @@ PhysicsManager::PhysicsManager(Engine& engine) : engine(engine) {
     }, 0);
 }
 
-std::optional<std::pair<Entity, vec3>> PhysicsManager::cast_ray(vec3 origin, vec3 direction) {
+std::optional<std::pair<Entity, vec3>> PhysicsManager::cast_ray(vec3 origin, vec3 direction, Entity excluded) {
     auto it = engine.ecs->query<Entity, GlobalTransform, Body>();
 
     Entity ret_e = -1;
     f32 ret_t = INFINITY;
 
     for (auto [entity, gt, body] : it) {
+        if (entity == excluded) continue;
         // the colliders are AABB, so we're gonna raycast against those
         // first, we have to transform the ray into model space
         // assuming the ray lives in world space, this is inverse(M) * origin and inverse(N) * direction

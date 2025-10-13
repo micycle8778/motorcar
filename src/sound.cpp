@@ -57,6 +57,17 @@ void SoundManager::play_sound(std::string_view path) {
     }
 }
 
+void SoundManager::play_music(std::string_view path) {
+    auto sound = engine.resources->get_resource<SoLoud::Wav>(path);
+    if (sound.has_value()) {
+        (**sound).setLooping(true);
+        soloud.play(**sound);
+    } else {
+        spdlog::error("Could not load sound '{}'", path);
+    }
+}
+
+
 SoundManager::~SoundManager() {
     soloud.deinit();
 }

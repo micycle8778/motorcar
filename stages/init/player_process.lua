@@ -1,3 +1,35 @@
+local gltf = Resources.get_gltf("mail.glb")
+function spawn_mail()
+    local player = -1
+    ECS.for_each({ "player", "entity" }, function(p) player = p.entity end)
+
+    local mail = ECS.new_entity()
+    ECS.insert_component(mail, "mail", {})
+    ECS.insert_component(mail, "gltf", "mail.glb")
+    ECS.insert_component(mail, "body", Body.new(AABB.new(vec3.new(0), vec3.new(1))))
+    ECS.insert_component(mail, "trigger_body", {})
+    ECS.insert_component(mail, "transform", Transform.new()
+        :with_position(vec3.new(
+            -2 + Random.randf() * 4,
+            -2 + Random.randf() * 4,
+            -2 + Random.randf() * 4
+        ))
+    )
+    ECS.insert_component(mail, "parent", player)
+
+    local colors = { "red_mail", "blue_mail", "purple_mail" }
+    local vs = {
+        red_mail = vec3.new(1, 0, 0),
+        blue_mail = vec3.new(0, 0, 1),
+        purple_mail = vec3.new(.7, 0, 1)
+    }
+
+    local color = colors[1 + Random.randi() % 3]
+
+    ECS.insert_component(mail, color, {})
+    ECS.insert_component(mail, "albedo", vs[color])
+end
+
 -- move player
 ECS.register_system({
     { "global_transform", "transform", "camera_holder" },
@@ -63,13 +95,65 @@ function(camera, mouse_sens)
 end, "render")
 
 -- ray picker
-ECS.register_system({ "global_transform", "camera" }, function(camera)
+ECS.register_system({
+    { "global_transform", "camera" }, { "entity", "player" }, { "money" }, { "water" }
+}, function(camera, player, money, water)
     local gt = camera.global_transform
 
     if Input.is_key_pressed_this_frame("left click") then
-        local result = Physics.cast_ray(gt:position(), gt:forward())
-        if result ~= nil then
-            ECS.insert_component(result.entity, "albedo", vec3.new(1, 0, 0))
+        local result = Physics.cast_ray(gt:position(), gt:forward(), player.entity)
+        local p = gt:position()
+        local d = gt:forward()
+        Log.trace(tostring(p.x) .. " " .. tostring(p.y) .. " " .. tostring(p.z))
+        Log.trace(tostring(d.x) .. " " .. tostring(d.y) .. " " .. tostring(d.z))
+        if result == nil then return end
+
+        -- if we're holding a weapon, we should handle shooting
+        if ECS.get_component(player.entity, "weapon") ~= nil then
+            Log.warn("A")
+            ECS.remove_component_from_entity(player.entity, "weapon")
+            if ECS.get_component(result.entity, "fly") then
+                ECS.delete_entity(result.entity)
+                Sound.play_sound("splat.mp3")
+            end
+        elseif ECS.get_component(result.entity, "mail") ~= nil then
+            Log.warn("B")
+            ECS.delete_entity(result.entity)
+            ECS.insert_component(player.entity, "weapon", {})
         end
+        -- elseif ECS.get_component(result.entity, "mail_buy_box") ~= nil then
+        --     Log.warn("C")
+        --     if money.money.money >= 1 then
+        --         money.money.money = money.money.money - 1
+        --         water.water.water = water.water.water + 40
+        --     else
+        --         Sound.play_sound("moolah.mp3")
+        --     end
+        -- elseif ECS.get_component(result.entity, "water_mail_box") ~= nil then
+        --     Log.warn("D")
+        --     if money.money.money >= 3 then
+        --         money.money.money = money.money.money - 3
+        --         spawn_mail() spawn_mail() spawn_mail() spawn_mail() spawn_mail()
+        --     else
+        --         Sound.play_sound("moolah.mp3")
+        --     end
+        -- end
+
+
     end
 end, "render")
+
+local thirsty = false
+ECS.register_system({ "water" }, function(water)
+    water.water.water = water.water.water - Engine.delta()
+    if water.water.water <= 0 then
+        Stages.change_to("lose")
+    end
+
+    if not thirsty and water.water.water <= 20 then
+        thirsty = true
+        Sound.play_sound("thirsty.mp3")
+    elseif water.water.water > 20 then
+        thirsty = false
+    end
+end)

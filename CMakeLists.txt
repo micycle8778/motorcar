@@ -187,5 +187,5 @@ else()
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
     set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}   -fsanitize=address -fno-omit-frame-pointer")
 
-    target_compile_options(motorcar PRIVATE -Wall -Werror)
+    target_compile_options(motorcar PRIVATE -Wall)
 endif()

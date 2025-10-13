@@ -13,5 +13,6 @@ namespace motorcar {
             ~SoundManager();
 
             void play_sound(std::string_view path);
+            void play_music(std::string_view path);
     };
 }

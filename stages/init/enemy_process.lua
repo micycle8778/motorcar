@@ -18,6 +18,10 @@ function spawn_enemy()
     end
 
     ECS.insert_component(enemy, "transform", transform:with_scale(vec3.new(5)))
+
+    if (Random.randi() % 10) == 1 then
+        Sound.play_sound("buzzbuzzbuzz.mp3")
+    end
 end
 
 local timer = 0
@@ -43,9 +47,15 @@ end, "render")
 ECS.register_system({ "entity", "enemy", "colliding_with" }, function(enemy)
     for idx, e in pairs(enemy.colliding_with.entities) do
         if ECS.get_component(e, "player") ~= nil then
-            ECS.fire_event("hurt_player")
+            ECS.for_each({ "health" }, function(h) 
+                h.health.health = h.health.health - 1
+                if h.health.health <= 0 then
+                    Stages.change_to("lose")
+                end
+            end)
+            local sounds = { "ough.mp3", "owie.mp3", "yeouchie.mp3" }
+            Sound.play_sound(sounds[Random.randi_range(1, 4)])
             ECS.delete_entity(enemy.entity)
         end
     end
 end)
-

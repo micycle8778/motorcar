@@ -6,6 +6,7 @@
 #include <ecs.h>
 #include <sol/forward.hpp>
 #include <string_view>
+#include <iostream>
 
 struct Position {
     float x;

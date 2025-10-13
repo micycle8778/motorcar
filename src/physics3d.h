@@ -12,6 +12,6 @@ namespace motorcar {
         public:
             PhysicsManager(Engine& engine);
 
-            std::optional<std::pair<Entity, vec3>> cast_ray(vec3 origin, vec3 direction);
+            std::optional<std::pair<Entity, vec3>> cast_ray(vec3 origin, vec3 direction, Entity excluded);
     };
 }

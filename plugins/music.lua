@@ -1,0 +1,1 @@
+Sound.play_music("song.mp3")

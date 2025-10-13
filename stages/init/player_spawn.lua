@@ -31,4 +31,49 @@ ECS.insert_component(speed_boost, "speed_boost", { value = 0 })
 local health = ECS.new_entity()
 ECS.insert_component(health, "health", { health = 5 })
 
+local water = ECS.new_entity()
+ECS.insert_component(water, "water", { water = 100 })
+
+local money = ECS.new_entity()
+ECS.insert_component(money, "money", { money = 0 })
+
 Input.lock_mouse()
+
+
+
+local gltf = Resources.get_gltf("mail.glb")
+function spawn_mail()
+    local hs = gltf.mesh_bundles[1].aabb.half_size
+    Log.warn(tostring(hs.x) .. " " .. tostring(hs.y) .. " " .. tostring(hs.z))
+
+    local mail = ECS.new_entity()
+    ECS.insert_component(mail, "gltf", "mail.glb")
+    ECS.insert_component(mail, "body", Body.new(AABB.new(vec3.new(0), vec3.new(1))))
+    ECS.insert_component(mail, "trigger_body", {})
+    ECS.insert_component(mail, "transform", Transform.new()
+        :with_position(vec3.new(
+            -2 + Random.randf() * 4,
+            -2 + Random.randf() * 4,
+            -2 + Random.randf() * 4
+        ))
+    )
+    ECS.insert_component(mail, "parent", camera_holder_holder)
+
+    local colors = { "red_mail", "blue_mail", "purple_mail" }
+    local vs = {
+        red_mail = vec3.new(1, 0, 0),
+        blue_mail = vec3.new(0, 0, 1),
+        purple_mail = vec3.new(.7, 0, 1)
+    }
+
+    local color = colors[1 + Random.randi() % 3]
+
+    ECS.insert_component(mail, color, {})
+    ECS.insert_component(mail, "albedo", vs[color])
+end
+
+spawn_mail()
+spawn_mail()
+spawn_mail()
+spawn_mail()
+spawn_mail()

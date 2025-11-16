@@ -28,6 +28,7 @@ namespace motorcar {
         double delta = 0.;
         double time_simulated_secs = 0.;
         bool keep_running = true;
+        bool render_collision_shapes = false;
 
         Engine(const std::string_view& game_name);
 

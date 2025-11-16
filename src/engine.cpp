@@ -68,6 +68,13 @@ namespace {
             world.emplace_native_component<GlobalTransform>(entity, model, normal);
         }
     }
+
+    template <typename Schedule, typename F>
+    void create_system(ECSWorld& ecs, F fn) {
+        auto e = ecs.new_entity();
+        ecs.emplace_native_component<System>(e, fn, 0);
+        ecs.emplace_native_component<Schedule>(e);
+    }
 }
 
 Engine::Engine(const std::string_view& name) {
@@ -90,6 +97,12 @@ void Engine::run() {
     const f32 SIMULATION_FREQ = 60;
     const u32 MAX_PHYSICS_STEPS = 4;
     const f32 PHYSICS_DELTA = 1. / SIMULATION_FREQ;
+
+    create_system<RenderSystem>(*ecs, [&]() {
+        if (input->is_key_pressed_this_frame("f3")) {
+            render_collision_shapes = !render_collision_shapes;
+        }
+    });
 
     scripts->load_plugins();
     ecs->flush_command_queue();

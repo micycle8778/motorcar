@@ -1,3 +1,4 @@
+#include "glm/ext/matrix_transform.hpp"
 #include <optional>
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
 
@@ -13,7 +14,6 @@
 
 #include "scripts.h"
 #include "types.h"
-#include "components.h"
 #include "physics3d.h"
 #include "engine.h"
 
@@ -40,7 +40,11 @@ struct OBB {
     vec3 center;
     
     OBB(AABB aabb, mat4 _model_matrix, mat3 normal_matrix) {
-        mat4 model_matrix = glm::scale(_model_matrix, aabb.half_size);
+        mat4 model_matrix = glm::scale(glm::translate(_model_matrix, aabb.center), aabb.half_size);
+        // mat4 model_matrix = _model_matrix * local;
+        // mat4 model_matrix = glm::translate(glm::scale(_model_matrix, aabb.half_size), aabb.center);
+        // mat4 model_matrix = glm::scale(_model_matrix, aabb.half_size);
+        // model_matrix = glm::translate(model_matrix, aabb.center);
 
         normals = {
             normal_matrix * vec3(1, 0, 0),
@@ -48,7 +52,7 @@ struct OBB {
             normal_matrix * vec3(0, 0, 1)
         };
 
-        center = model_matrix * vec4(aabb.center, 1);
+        center = model_matrix * vec4(0, 0, 0, 1);
 
         points = {
             vec3(model_matrix * vec4(vec3(  1,  1,  1 ), 1)),
@@ -89,15 +93,6 @@ namespace motorcar {
     };
     COMPONENT_TYPE_TRAIT(CollidingWith, "colliding_with");
 
-    struct Collider {
-        AABB aabb; // AABB when the model has no rotation
-        f32 radius; // radius of the broad phase circle collider
-
-        Collider(AABB aabb) : 
-            aabb(aabb), radius(glm::length(aabb.half_size))
-        {}
-        DEFAULT_LUA_CONSTRUCTABLE(Collider);
-    };
 
     struct KinematicBody {
         KinematicBody() {}
@@ -110,17 +105,6 @@ namespace motorcar {
         TriggerBody(sol::object) {}
     };
     COMPONENT_TYPE_TRAIT(TriggerBody, "trigger_body");
-
-    struct Body {
-        // BodyType body; // static, trigger, kinematic // is static needed?
-        Collider collider; // TODO: many colliders
-        Body(Collider collider) : collider(collider) {}
-        Body(AABB aabb) : collider(aabb) {}
-        Body(sol::object object) : collider(Collider(AABB())) {
-            *this = object.as<Body>();
-        }
-    };
-    COMPONENT_TYPE_TRAIT(Body, "body");
 }
 
 struct TransformedBody {
@@ -183,6 +167,7 @@ std::optional<vec3> bodies_overlap(TransformedBody a, TransformedBody b) {
         }
     }
 
+    // SPDLOG_DEBUG("collision");
     return displacement;
 };
 
@@ -314,12 +299,12 @@ std::optional<std::pair<Entity, vec3>> PhysicsManager::cast_ray(vec3 origin, vec
             ret_e = entity;
         }
 
-        if (t_min < 0) {
-            ret_e = entity;
-            ret_t = t_max;
-            return std::make_pair(entity, origin + direction * t_max);
-        }
-        return std::make_pair(entity, origin + direction * t_min);
+        // if (t_min < 0) {
+        //     ret_e = entity;
+        //     ret_t = t_max;
+        //     return std::make_pair(entity, origin + direction * t_max);
+        // }
+        // return std::make_pair(entity, origin + direction * t_min);
     }
     
     if (ret_e == (Entity)-1) {

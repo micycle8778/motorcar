@@ -24,11 +24,13 @@ function spawn_enemy()
     end
 end
 
+local nextTimer = 5
 local timer = 0
 ECS.register_system({}, function()
     timer = timer - Engine.delta()
     if timer <= 0 then
-        timer = 5
+        timer = nextTimer
+        -- nextTimer = math.max(0.5, nextTimer * 0.95)
         spawn_enemy()
     end
 end)
@@ -47,15 +49,16 @@ end, "render")
 ECS.register_system({ "entity", "enemy", "colliding_with" }, function(enemy)
     for idx, e in pairs(enemy.colliding_with.entities) do
         if ECS.get_component(e, "player") ~= nil then
+            local sounds = { "ough.mp3", "owie.mp3", "yeouchie.mp3" }
+            Sound.play_sound(sounds[Random.randi_range(1, 4)])
+            ECS.delete_entity(enemy.entity)
+
             ECS.for_each({ "health" }, function(h) 
                 h.health.health = h.health.health - 1
                 if h.health.health <= 0 then
                     Stages.change_to("lose")
                 end
             end)
-            local sounds = { "ough.mp3", "owie.mp3", "yeouchie.mp3" }
-            Sound.play_sound(sounds[Random.randi_range(1, 4)])
-            ECS.delete_entity(enemy.entity)
         end
     end
 end)

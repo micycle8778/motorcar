@@ -104,15 +104,23 @@ ECS.register_system({
         local result = Physics.cast_ray(gt:position(), gt:forward(), player.entity)
         local p = gt:position()
         local d = gt:forward()
-        Log.trace(tostring(p.x) .. " " .. tostring(p.y) .. " " .. tostring(p.z))
-        Log.trace(tostring(d.x) .. " " .. tostring(d.y) .. " " .. tostring(d.z))
+        -- Log.trace(tostring(p.x) .. " " .. tostring(p.y) .. " " .. tostring(p.z))
+        -- Log.trace(tostring(d.x) .. " " .. tostring(d.y) .. " " .. tostring(d.z))
         if result == nil then return end
 
         -- if we're holding a weapon, we should handle shooting
+
+        for component, storage in pairs(ECS.get_ecs()) do
+            if storage[result.entity] then
+                Log.debug(component)
+            end
+        end
+
         if ECS.get_component(player.entity, "weapon") ~= nil then
             Log.warn("A")
             ECS.remove_component_from_entity(player.entity, "weapon")
-            if ECS.get_component(result.entity, "fly") then
+            Sound.play_sound("gunshot.mp3")
+            if ECS.get_component(result.entity, "enemy") then
                 ECS.delete_entity(result.entity)
                 Sound.play_sound("splat.mp3")
             end
@@ -120,24 +128,26 @@ ECS.register_system({
             Log.warn("B")
             ECS.delete_entity(result.entity)
             ECS.insert_component(player.entity, "weapon", {})
+            Sound.play_sound("gun_cock.mp3")
+        elseif ECS.get_component(result.entity, "water_buy_box") ~= nil then
+            Log.warn("C")
+            if money.money.money >= 1 then
+                money.money.money = money.money.money - 1
+                water.water.water = water.water.water + 40
+            else
+                Sound.play_sound("moolah.mp3")
+            end
+        elseif ECS.get_component(result.entity, "mail_buy_box") ~= nil then
+            Log.warn("D")
+            if money.money.money >= 3 then
+                money.money.money = money.money.money - 3
+                spawn_mail() spawn_mail() spawn_mail() spawn_mail() spawn_mail()
+            else
+                Sound.play_sound("moolah.mp3")
+            end
+        else
+            Log.warn("E")
         end
-        -- elseif ECS.get_component(result.entity, "mail_buy_box") ~= nil then
-        --     Log.warn("C")
-        --     if money.money.money >= 1 then
-        --         money.money.money = money.money.money - 1
-        --         water.water.water = water.water.water + 40
-        --     else
-        --         Sound.play_sound("moolah.mp3")
-        --     end
-        -- elseif ECS.get_component(result.entity, "water_mail_box") ~= nil then
-        --     Log.warn("D")
-        --     if money.money.money >= 3 then
-        --         money.money.money = money.money.money - 3
-        --         spawn_mail() spawn_mail() spawn_mail() spawn_mail() spawn_mail()
-        --     else
-        --         Sound.play_sound("moolah.mp3")
-        --     end
-        -- end
 
 
     end
@@ -147,6 +157,7 @@ local thirsty = false
 ECS.register_system({ "water" }, function(water)
     water.water.water = water.water.water - Engine.delta()
     if water.water.water <= 0 then
+        Sound.play_sound("thirsty.mp3")
         Stages.change_to("lose")
     end
 

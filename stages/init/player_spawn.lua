@@ -48,7 +48,9 @@ function spawn_mail()
 
     local mail = ECS.new_entity()
     ECS.insert_component(mail, "gltf", "mail.glb")
-    ECS.insert_component(mail, "body", Body.new(AABB.new(vec3.new(0), vec3.new(1))))
+    ECS.insert_component(mail, "mail", {})
+    ECS.insert_component(mail, "body", Body.new(gltf.mesh_bundles[1].aabb))
+    -- ECS.insert_component(mail, "body", Body.new(AABB.new(vec3.new(0), vec3.new(1))))
     ECS.insert_component(mail, "trigger_body", {})
     ECS.insert_component(mail, "transform", Transform.new()
         :with_position(vec3.new(

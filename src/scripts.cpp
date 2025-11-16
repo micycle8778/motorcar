@@ -227,7 +227,7 @@ namespace {
 }
 
 ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
-    lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table);
+    lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table, sol::lib::string);
     engine.ecs->lua_storage = sol::table(lua, sol::new_table());
 
     sol::table input_namespace = lua["Input"].force();
@@ -306,6 +306,9 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     ecs_namespace.set_function("get_component", [&](Entity e, std::string component) {
         return engine.ecs->get_native_component_as_lua_object(e, component, lua);
     });
+    ecs_namespace.set_function("get_ecs", [&]() {
+            return engine.ecs->lua_storage;
+    });
     ecs_namespace.set_function("remove_component_from_entity", [&](Entity e, std::string component) {
         bool is_native_component = engine.ecs->native_component_exists(component);
         bool is_lua_component = engine.ecs->lua_storage[component].valid();
@@ -319,7 +322,7 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
             });
         }
     });
-    ecs_namespace.set_function("register_component", [&](Entity e, std::string component) {
+    ecs_namespace.set_function("register_component", [&](std::string component) {
         if (engine.ecs->native_component_exists(component)) {
             throw std::runtime_error(std::format("trying to register native component {}", component));
         }

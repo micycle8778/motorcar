@@ -1,3 +1,5 @@
+#include <iterator>
+#include <memory>
 #include <sol/raii.hpp>
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
 
@@ -16,6 +18,9 @@
 
 #include <spdlog/spdlog.h>
 
+#define STB_TRUETYPE_IMPLEMENTATION
+#include <stb_truetype.h>
+// #include <stb_rect_pack.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
@@ -40,6 +45,7 @@ using namespace motorcar;
 INCTXT(pipeline_2d_shader, "pipeline2d.wgsl");
 INCTXT(pipeline_3d_shader, "pipeline3d.wgsl");
 INCTXT(pipeline_colliders_shader, "pipeline_colliders.wgsl");
+INCBIN(liberation_sans, "LiberationSans-Regular.ttf");
 
 const std::string_view MISSING_TEXTURE_PATH = "::gfx::missing_texture";
 const std::string_view BLANK_TEXTURE_PATH = "::gfx::blank_texture";
@@ -98,6 +104,11 @@ namespace {
 
     struct Uniforms2D {
         mat4 projection;
+    };
+
+    struct VertexData2D {
+        float x, y;
+        float u, v;
     };
 
     struct VertexData3D {
@@ -439,6 +450,91 @@ namespace {
             return glTFScene(*webgpu, scene, resource_path, engine);
         }
     };
+
+    struct FontData {
+        static constexpr u8 FIRST_CHAR = 32;
+        static constexpr u8 NUM_CHARS = 95;
+
+        stbtt_fontinfo font;
+        float scale;
+        struct {
+            float u0, v0, u1, v1;  // UV coordinates
+            int width, height;
+        } char_uvs[NUM_CHARS];
+
+        std::unique_ptr<Texture> texture;
+
+        FontData(GraphicsManager::WebGPUState& webgpu, const u8* font_data) {
+            // load font file
+            stbtt_InitFont(&font, font_data, stbtt_GetFontOffsetForIndex(font_data, 0));
+            scale = stbtt_ScaleForPixelHeight(&font, 32);
+
+            // setup texture pack
+            stbrp_rect rects[NUM_CHARS];
+            u8* char_bitmaps[NUM_CHARS];
+
+            for (int i = 0; i < NUM_CHARS; i++) {
+                int codepoint = FIRST_CHAR + i;
+                int w, h, xoff, yoff;
+                
+                // Rasterize character
+                char_bitmaps[i] = stbtt_GetCodepointBitmap(&font, 0, scale, 
+                    codepoint, &w, &h, &xoff, &yoff);
+                
+                // Set up rectangle for packing
+                rects[i].w = w;
+                rects[i].h = h;
+                rects[i].id = i;
+            }
+
+            // pack glyphs into rectangle
+            stbrp_context context;
+            int texture_width = 512, texture_height = 512;
+            stbrp_node* nodes = static_cast<stbrp_node*>(malloc(texture_width * sizeof(stbrp_node)));
+            stbrp_init_target(&context, texture_width, texture_height, nodes, texture_width);
+            stbrp_pack_rects(&context, rects, NUM_CHARS);
+
+            // generate texture
+            u8* atlas = static_cast<u8*>(calloc(texture_width * texture_height * 4, 1));
+
+            for (int i = 0; i < NUM_CHARS; i++) {
+                if (rects[i].was_packed) {
+                    // Copy bitmap into atlas at (rects[i].x, rects[i].y)
+                    for (int y = 0; y < rects[i].h; y++) {
+                        for (int x = 0; x < rects[i].w; x++) {
+                            int src_idx = y * rects[i].w + x;
+                            int dst_idx = ((rects[i].y + y) * texture_width + (rects[i].x + x)) * 4;
+
+                            unsigned char alpha = char_bitmaps[i][src_idx];
+                            atlas[dst_idx + 0] = 255;  // R
+                            atlas[dst_idx + 1] = 255;  // G
+                            atlas[dst_idx + 2] = 255;  // B
+                            atlas[dst_idx + 3] = alpha; // A
+                        }
+                    }
+                    
+                    // Store UV coordinates (normalized 0-1)
+                    char_uvs[i].u0 = (float)rects[i].x / texture_width;
+                    char_uvs[i].v0 = (float)rects[i].y / texture_height;
+                    char_uvs[i].u1 = (float)(rects[i].x + rects[i].w) / texture_width;
+                    char_uvs[i].v1 = (float)(rects[i].y + rects[i].h) / texture_height;
+                    char_uvs[i].width = rects[i].w;
+                    char_uvs[i].height = rects[i].h;
+                } else {
+                    SPDLOG_ERROR("rects[i].was_packed == false");
+                    std::abort();
+                }
+                free(char_bitmaps[i]);
+            }
+
+            // upload it to the gpu
+            texture = std::make_unique<Texture>(webgpu, atlas, texture_width, texture_height, "Font texture");
+
+            free(atlas);
+            free(nodes);
+        }
+    };
+
 }
 
 void GraphicsManager::WebGPUState::configure_surface(GLFWwindow* window) {
@@ -469,6 +565,7 @@ void GraphicsManager::WebGPUState::configure_surface(GLFWwindow* window) {
     }));
 }
 
+static std::unique_ptr<FontData> da_font_data;
 void GraphicsManager::WebGPUState::setup(GLFWwindow* window) {
     instance = wgpuCreateInstance(to_ptr(WGPUInstanceDescriptor{}));
 
@@ -526,21 +623,20 @@ void GraphicsManager::WebGPUState::setup(GLFWwindow* window) {
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* window, int, int) {
         ((Engine*)glfwGetWindowUserPointer(window))->gfx->webgpu->configure_surface(window);
     });
+
 }
 
 void GraphicsManager::WebGPUState::init_pipeline_2d() {
     // A vertex buffer containing a textured square.
-    const struct {
-        // position
-        float x, y;
-        // texcoords
-        float u, v;
-    } vertices[] = {
+    const VertexData2D vertices[] = {
           // position       // texcoords
-        { -1.0f,  -1.0f,    0.0f,  1.0f },
-        {  1.0f,  -1.0f,    1.0f,  1.0f },
-        { -1.0f,   1.0f,    0.0f,  0.0f },
-        {  1.0f,   1.0f,    1.0f,  0.0f },
+        { -.5f,  -.5f,    0.0f,  1.0f },
+        {  .5f,  -.5f,    1.0f,  1.0f },
+        { -.5f,   .5f,    0.0f,  0.0f },
+
+        {  .5f,  -.5f,    1.0f,  1.0f },
+        { -.5f,   .5f,    0.0f,  0.0f },
+        {  .5f,   .5f,    1.0f,  0.0f },
     };
 
     // give the GPU our quad
@@ -629,10 +725,15 @@ void GraphicsManager::WebGPUState::init_pipeline_2d() {
                 })
             },
         
-        // Interpret our 4 vertices as a triangle strip
         .primitive = WGPUPrimitiveState{
-            .topology = WGPUPrimitiveTopology_TriangleStrip,
+            .topology = WGPUPrimitiveTopology_TriangleList,
             },
+
+        .depthStencil = to_ptr(WGPUDepthStencilState {
+            .format = WGPUTextureFormat_Depth24Plus,
+            .depthWriteEnabled = WGPUOptionalBool_True,
+            .depthCompare = WGPUCompareFunction_Less,
+        }),
         
         // No multi-sampling (1 sample per pixel, all bits on).
         .multisample = WGPUMultisampleState{
@@ -934,6 +1035,8 @@ GraphicsManager::WebGPUState::WebGPUState(GLFWwindow* window) {
     init_pipeline_2d();
     init_pipeline_3d();
 
+    // create font data
+    da_font_data = std::make_unique<FontData>(*this, gliberation_sansData);
 }
 
 GraphicsManager::GraphicsManager(
@@ -1001,7 +1104,7 @@ bool GraphicsManager::window_should_close() {
     return glfwWindowShouldClose(window);
 }
 
-void GraphicsManager::clear_screen(WGPUTextureView surface_texture_view) {
+void GraphicsManager::clear_screen(WGPUTextureView surface_texture_view, WGPUTextureView depth_texture_view) {
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(webgpu->device, nullptr);
 
     WGPURenderPassEncoder render_pass = wgpuCommandEncoderBeginRenderPass( encoder, to_ptr<WGPURenderPassDescriptor>({
@@ -1013,7 +1116,13 @@ void GraphicsManager::clear_screen(WGPUTextureView surface_texture_view) {
             .storeOp = WGPUStoreOp_Store,
             // Choose the background color.
             .clearValue = WGPUColor{ 0.05, 0.05, 0.075, 1. }
-        }})
+        }}),
+        .depthStencilAttachment = to_ptr(WGPURenderPassDepthStencilAttachment {
+            .view = depth_texture_view,
+            .depthLoadOp = WGPULoadOp_Clear,
+            .depthStoreOp = WGPUStoreOp_Store,
+            .depthClearValue = 1.,
+        }),
     }) );
 
     wgpuRenderPassEncoderSetPipeline( render_pass, webgpu->pipeline_2d );
@@ -1028,7 +1137,7 @@ void GraphicsManager::clear_screen(WGPUTextureView surface_texture_view) {
 }
 
 static bool warn_flag_2d = false;
-void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
+void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view, WGPUTextureView depth_texture_view) {
     // == SETUP SPRITES
     auto it = engine.ecs->query<Transform, Sprite>();
     auto entities = std::vector(it.begin(), it.end());
@@ -1044,7 +1153,6 @@ void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
     warn_flag_2d = false;
 
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(webgpu->device, nullptr);
-
     // clear screen and begin render pass
     // const f64 grey_intensity = 0.;
     WGPURenderPassEncoder render_pass = wgpuCommandEncoderBeginRenderPass( encoder, to_ptr<WGPURenderPassDescriptor>({
@@ -1056,7 +1164,13 @@ void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
             .storeOp = WGPUStoreOp_Store,
             // Choose the background color.
             .clearValue = WGPUColor{ 0, 0, 0, 0 }
-        }})
+        }}),
+        .depthStencilAttachment = to_ptr(WGPURenderPassDepthStencilAttachment {
+            .view = depth_texture_view,
+            .depthLoadOp = WGPULoadOp_Load,
+            .depthStoreOp = WGPUStoreOp_Store,
+            .depthClearValue = 1.,
+        }),
     }) );
 
     WGPUBuffer instance_buffer = wgpuDeviceCreateBuffer( webgpu->device, to_ptr( WGPUBufferDescriptor{
@@ -1067,7 +1181,7 @@ void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
 
     // ready the pipeline
     wgpuRenderPassEncoderSetPipeline( render_pass, webgpu->pipeline_2d );
-    wgpuRenderPassEncoderSetVertexBuffer( render_pass, 0 /* slot */, webgpu->quad_vertex_buffer, 0, 4*4*sizeof(float) );
+    wgpuRenderPassEncoderSetVertexBuffer( render_pass, 0 /* slot */, webgpu->quad_vertex_buffer, 0, 6 * sizeof(VertexData2D) );
     wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1 /* slot */, instance_buffer, 0, sizeof(InstanceData2D) * entities.size());
 
     // == SETUP & UPLOAD UNIFORMS
@@ -1080,13 +1194,14 @@ void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
 
     int width, height;
     glfwGetWindowSize(window, &width, &height);
-    if( width < height ) {
-        uniforms.projection[1][1] *= width;
-        uniforms.projection[1][1] /= height;
-    } else {
-        uniforms.projection[0][0] *= height;
-        uniforms.projection[0][0] /= width;
-    }
+    // if( width < height ) {
+    //     uniforms.projection[1][1] *= width;
+    //     uniforms.projection[1][1] /= height;
+    // } else {
+    //     uniforms.projection[0][0] *= height;
+    //     uniforms.projection[0][0] /= width;
+    // }
+    uniforms.projection = glm::ortho(-640.f, 640.f, -360.f, 360.f, -1.f, 1.f);
     wgpuQueueWriteBuffer( webgpu->queue, webgpu->uniforms_buffer_2d, 0, &uniforms, sizeof(Uniforms2D) );
 
 
@@ -1110,13 +1225,13 @@ void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
 
         InstanceData2D instance {
             .translation = transform->position,
-            .scale = vec3(scale, 1) * transform->scale
+            .scale = vec3(tex->width, tex->height, 1) * transform->scale
         };
 
         wgpuQueueWriteBuffer( webgpu->queue, instance_buffer, count * sizeof(InstanceData2D), &instance, sizeof(InstanceData2D) );
 
         wgpuRenderPassEncoderSetBindGroup( render_pass, 0, tex->bind_group_2d, 0, nullptr );
-        wgpuRenderPassEncoderDraw( render_pass, 4, 1, 0, count );
+        wgpuRenderPassEncoderDraw( render_pass, 6, 1, 0, count );
 
         count++;
     }
@@ -1132,8 +1247,139 @@ void GraphicsManager::draw_sprites(WGPUTextureView surface_texture_view) {
     wgpuBufferRelease(instance_buffer);
 }
 
+static bool warn_flag_text = false;
+void GraphicsManager::draw_text(WGPUTextureView surface_texture_view, WGPUTextureView depth_texture_view) {
+    // == SETUP SPRITES
+    auto it = engine.ecs->query<Transform, Text>();
+    auto entities = std::vector(it.begin(), it.end());
+
+    if (entities.size() == 0) {
+        if (!warn_flag_text) SPDLOG_WARN("no text! returning early!");
+        warn_flag_text = true;
+        return;
+    }
+    warn_flag_text = false;
+
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(webgpu->device, nullptr);
+
+    // clear screen and begin render pass
+    // const f64 grey_intensity = 0.;
+    WGPURenderPassEncoder render_pass = wgpuCommandEncoderBeginRenderPass( encoder, to_ptr<WGPURenderPassDescriptor>({
+        .colorAttachmentCount = 1,
+        .colorAttachments = to_ptr<WGPURenderPassColorAttachment>({{
+            .view = surface_texture_view,
+            .depthSlice = WGPU_DEPTH_SLICE_UNDEFINED, // not a 3D texture
+            .loadOp = WGPULoadOp_Load,
+            .storeOp = WGPUStoreOp_Store,
+            // Choose the background color.
+            .clearValue = WGPUColor{ 0, 0, 0, 0 }
+        }}),
+        .depthStencilAttachment = to_ptr(WGPURenderPassDepthStencilAttachment {
+            .view = depth_texture_view,
+            .depthLoadOp = WGPULoadOp_Load,
+            .depthStoreOp = WGPUStoreOp_Store,
+            .depthClearValue = 1.,
+        }),
+    }) );
+
+    WGPUBuffer instance_buffer = wgpuDeviceCreateBuffer( webgpu->device, to_ptr( WGPUBufferDescriptor{
+        .label = WGPUStringView("Instance Buffer", WGPU_STRLEN),
+        .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
+        .size = sizeof(InstanceData2D) * entities.size()
+    }) );
+
+    // ready the pipeline
+    wgpuRenderPassEncoderSetPipeline( render_pass, webgpu->pipeline_2d );
+    // wgpuRenderPassEncoderSetVertexBuffer( render_pass, 0 /* slot */, webgpu->quad_vertex_buffer, 0, 4*4*sizeof(float) );
+    wgpuRenderPassEncoderSetVertexBuffer(render_pass, 1 /* slot */, instance_buffer, 0, sizeof(InstanceData2D) * entities.size());
+
+    // == SETUP & UPLOAD UNIFORMS
+    // Start with an identity matrix.
+    Uniforms2D uniforms{};
+    uniforms.projection = mat4{1};
+    // Scale x and y by 1/100.
+    uniforms.projection[0][0] = uniforms.projection[1][1] = 1.f/100.f;
+    // Scale the long edge by an additional 1/(long/short) = short/long.
+
+    int width, height;
+    glfwGetWindowSize(window, &width, &height);
+    uniforms.projection = glm::ortho(-640.f, 640.f, -360.f, 360.f, -1.f, 1.f);
+    wgpuQueueWriteBuffer( webgpu->queue, webgpu->uniforms_buffer_2d, 0, &uniforms, sizeof(Uniforms2D) );
+
+
+    // draw the little guys
+    int count = 0;
+    for (auto [transform, text] : entities) {
+        if (text->text.size() == 0) continue;
+
+        u64 buffer_count = text->text.size() * 6;
+        u64 buffer_size = sizeof(VertexData2D) * buffer_count;
+        WGPUBuffer vertex_buffer = wgpuDeviceCreateBuffer(webgpu->device, to_ptr(WGPUBufferDescriptor {
+            .label = WGPUStringView( "Text Vertex Buffer", WGPU_STRLEN ),
+            .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex,
+            .size = buffer_size
+        }));
+
+        VertexData2D* cpu_buf = Ocean::Allocator<VertexData2D>(engine.ecs->ocean).allocate(buffer_count);
+        VertexData2D* write_head = cpu_buf;
+
+        float x_advance = 0;
+        for (const char c : text->text) {
+            int char_idx = c - 32;
+
+            int advance_width;
+            int lsb; // left side bearing
+            stbtt_GetCodepointHMetrics(&da_font_data->font, c, &advance_width, &lsb);
+            float x_offset = lsb * da_font_data->scale;
+
+            float u0 = da_font_data->char_uvs[char_idx].u0;
+            float u1 = da_font_data->char_uvs[char_idx].u1;
+            float v0 = da_font_data->char_uvs[char_idx].v0;
+            float v1 = da_font_data->char_uvs[char_idx].v1;
+
+            float w = da_font_data->char_uvs[char_idx].width;
+            float h = da_font_data->char_uvs[char_idx].height;
+
+            *write_head = VertexData2D { x_offset + x_advance,     0, u0, v1 }; write_head++; // top-left
+            *write_head = VertexData2D { x_offset + x_advance + w, 0, u1, v1 }; write_head++; // top-right
+            *write_head = VertexData2D { x_offset + x_advance,     h, u0, v0 }; write_head++; // bottom-left
+
+            *write_head = VertexData2D { x_offset + x_advance + w, 0, u1, v1 }; write_head++; // top-right
+            *write_head = VertexData2D { x_offset + x_advance,     h, u0, v0 }; write_head++; // bottom-left
+            *write_head = VertexData2D { x_offset + x_advance + w, h, u1, v0 }; write_head++; // bottom-right
+
+            x_advance += advance_width * da_font_data->scale;
+        }
+
+        InstanceData2D instance {
+            .translation = transform->position,
+            .scale = transform->scale
+        };
+
+        wgpuQueueWriteBuffer(webgpu->queue, vertex_buffer, 0, cpu_buf, buffer_size);
+        wgpuRenderPassEncoderSetVertexBuffer(render_pass, 0, vertex_buffer, 0, buffer_size);
+        wgpuQueueWriteBuffer( webgpu->queue, instance_buffer, count * sizeof(InstanceData2D), &instance, sizeof(InstanceData2D) );
+
+        wgpuRenderPassEncoderSetBindGroup( render_pass, 0, da_font_data->texture->bind_group_2d, 0, nullptr );
+        wgpuRenderPassEncoderDraw( render_pass, buffer_count, 1, 0, count );
+
+        count++;
+        wgpuBufferRelease(vertex_buffer);
+    }
+
+    wgpuRenderPassEncoderEnd(render_pass);
+
+    WGPUCommandBuffer command_buffer = wgpuCommandEncoderFinish( encoder, nullptr );
+    wgpuQueueSubmit( webgpu->queue, 1, &command_buffer );
+
+    wgpuCommandBufferRelease(command_buffer);
+    wgpuRenderPassEncoderRelease(render_pass);
+    wgpuCommandEncoderRelease(encoder);
+    wgpuBufferRelease(instance_buffer);
+}
+
 static bool warn_flag_3d = false;
-void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
+void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view, WGPUTextureView depth_texture_view) {
     auto it = engine.ecs->query<Entity, GLTF, GlobalTransform>() | 
         std::views::filter([&](auto t) { 
             return !std::get<GLTF*>(t)->resource_path.empty();
@@ -1176,7 +1422,6 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
     }));
 
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(webgpu->device, nullptr);
-    WGPUTextureView depth_texture_view = wgpuTextureCreateView(webgpu->depth_texture, nullptr);
 
     // clear screen and begin render pass
     // const f64 grey_intensity = 0.;
@@ -1192,7 +1437,7 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
         }}),
         .depthStencilAttachment = to_ptr(WGPURenderPassDepthStencilAttachment {
             .view = depth_texture_view,
-            .depthLoadOp = WGPULoadOp_Clear,
+            .depthLoadOp = WGPULoadOp_Load,
             .depthStoreOp = WGPUStoreOp_Store,
             .depthClearValue = 1.,
         }),
@@ -1279,15 +1524,13 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view) {
     wgpuQueueSubmit( webgpu->queue, 1, &command_buffer );
 
     wgpuCommandBufferRelease(command_buffer);
-    wgpuTextureViewRelease(depth_texture_view);
-    wgpuCommandBufferRelease(command_buffer);
     wgpuRenderPassEncoderRelease(render_pass);
     wgpuCommandEncoderRelease(encoder);
     wgpuBindGroupLayoutRelease(bind_group_layout_3d_2);
     wgpuBufferRelease(matrix_buffer);
 }
 
-void GraphicsManager::draw_colliders(WGPUTextureView surface_texture_view) {
+void GraphicsManager::draw_colliders(WGPUTextureView surface_texture_view, WGPUTextureView depth_texture_view) {
     auto it = engine.ecs->query<Entity, GlobalTransform, Body>();
 
     u32 count = 0;
@@ -1300,7 +1543,6 @@ void GraphicsManager::draw_colliders(WGPUTextureView surface_texture_view) {
     }));
 
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(webgpu->device, nullptr);
-    WGPUTextureView depth_texture_view = wgpuTextureCreateView(webgpu->depth_texture, nullptr);
 
     // clear screen and begin render pass
     // const f64 grey_intensity = 0.;
@@ -1399,8 +1641,6 @@ void GraphicsManager::draw_colliders(WGPUTextureView surface_texture_view) {
     wgpuQueueSubmit( webgpu->queue, 1, &command_buffer );
 
     wgpuCommandBufferRelease(command_buffer);
-    wgpuTextureViewRelease(depth_texture_view);
-    wgpuCommandBufferRelease(command_buffer);
     wgpuRenderPassEncoderRelease(render_pass);
     wgpuCommandEncoderRelease(encoder);
     wgpuBindGroupLayoutRelease(bind_group_layout_3d_2);
@@ -1413,15 +1653,18 @@ void GraphicsManager::draw() {
     WGPUSurfaceTexture surface_texture{};
     wgpuSurfaceGetCurrentTexture( webgpu->surface, &surface_texture );
     WGPUTextureView surface_texture_view = wgpuTextureCreateView( surface_texture.texture, nullptr );
+    WGPUTextureView depth_texture_view = wgpuTextureCreateView(webgpu->depth_texture, nullptr);
 
-    clear_screen(surface_texture_view);
-    draw_3d(surface_texture_view);
+    clear_screen(surface_texture_view, depth_texture_view);
+    draw_3d(surface_texture_view, depth_texture_view);
     if (engine.render_collision_shapes)
-        draw_colliders(surface_texture_view);
-    draw_sprites(surface_texture_view);
+        draw_colliders(surface_texture_view, depth_texture_view);
+    draw_sprites(surface_texture_view, depth_texture_view);
+    draw_text(surface_texture_view, depth_texture_view);
 
     wgpuSurfacePresent( webgpu->surface );
     wgpuTextureViewRelease(surface_texture_view);
+    wgpuTextureViewRelease(depth_texture_view);
     wgpuTextureRelease(surface_texture.texture);
 }
 

@@ -22,10 +22,11 @@ namespace motorcar {
             GLFWwindow* window;
             std::shared_ptr<WebGPUState> webgpu;
             Engine& engine;
-            void draw_sprites(WGPUTextureView surface_texture_view);
-            void draw_3d(WGPUTextureView surface_texture_view);
-            void draw_colliders(WGPUTextureView surface_texture_view);
-            void clear_screen(WGPUTextureView surface_texture_view);
+            void draw_sprites(WGPUTextureView surface_texture_view, WGPUTextureView depth_texture_view);
+            void draw_text(WGPUTextureView surface_texture_view, WGPUTextureView depth_texture_view);
+            void draw_3d(WGPUTextureView surface_texture_view, WGPUTextureView depth_texture_view);
+            void draw_colliders(WGPUTextureView surface_texture_view, WGPUTextureView depth_texture_view);
+            void clear_screen(WGPUTextureView surface_texture_view, WGPUTextureView depth_texture_view);
 
         public:
             GraphicsManager(

@@ -276,6 +276,22 @@ namespace motorcar {
         Camera(sol::object) {}
     };
     COMPONENT_TYPE_TRAIT(Camera, "camera");
+
+    struct Text {
+        std::string text;
+
+        Text(std::string s) : text(s) {}
+        Text(sol::object object) {
+            if (object.is<std::string>()) {
+                text = object.as<std::string>();
+            } else if (object.is<Text>()) {
+                *this = object.as<Text>();
+            } else {
+                throw std::runtime_error("object is not convertible to Text");
+            }
+        }
+    };
+    COMPONENT_TYPE_TRAIT(Text, "text");
     
     void register_components_to_lua(sol::state& state);
     void register_components_to_ecs(ECSWorld& world);

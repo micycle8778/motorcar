@@ -55,7 +55,12 @@ void motorcar::register_components_to_lua(sol::state& state) {
 
     state.new_usertype<Albedo>("Albedo",
         sol::constructors<Albedo(vec4), Albedo(vec3)>(),
-        "Albedo", &Albedo::color
+        "color", &Albedo::color
+    );
+
+    state.new_usertype<Text>("Text",
+        sol::constructors<Text(std::string)>(),
+        "text", &Text::text
     );
 }
 
@@ -67,6 +72,7 @@ void motorcar::register_components_to_ecs(ECSWorld &world) {
     world.register_component<Sprite>();
     world.register_component<GLTF>();
     world.register_component<Albedo>();
+    world.register_component<Text>();
 
     world.register_component<System>();
     world.register_component<EventHandler>();

@@ -22,8 +22,13 @@ ECS.insert_component(horse, "parent", camera_holder_holder)
 ECS.insert_component(horse, "transform", Transform.new():with_position(vec3.new(0, -1.25, 0)):rotated(vec3.new(0, 1, 0), 3.1415))
 
 local crosshair = ECS.new_entity()
-ECS.insert_component(crosshair, "transform", Transform.new():with_scale(vec3.new(2)))
+ECS.insert_component(crosshair, "transform", Transform.new():with_scale(vec3.new(.05)))
 ECS.insert_component(crosshair, "sprite", "insect.png")
+
+local label = ECS.new_entity()
+ECS.insert_component(label, "transform", Transform.new():with_scale(vec3.new(1)):with_position(vec3.new(0, 0, 0)))
+ECS.insert_component(label, "text", Text.new("aeiou"))
+
 
 local speed_boost = ECS.new_entity()
 ECS.insert_component(speed_boost, "speed_boost", { value = 0 })

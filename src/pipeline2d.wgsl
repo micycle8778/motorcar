@@ -29,5 +29,7 @@ fn vertex_shader_main( in: VertexInput ) -> VertexOutput {
 @fragment
 fn fragment_shader_main( in: VertexOutput ) -> @location(0) vec4f {
     var color = textureSample( texData, texSampler, in.texcoords ).rgba;
+    if (color.a < 0.0001) { discard; }
+    // return vec4(in.texcoords, 1, 1);
     return color;
 }

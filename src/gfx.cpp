@@ -1326,6 +1326,8 @@ void GraphicsManager::draw_text(WGPUTextureView surface_texture_view, WGPUTextur
         float x_advance = 0;
         for (const char c : text->text) {
             int char_idx = c - 32;
+            // warn here?
+            if (char_idx < 0 || char_idx > FontData::NUM_CHARS) continue;
 
             int advance_width;
             int lsb; // left side bearing

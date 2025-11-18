@@ -27,7 +27,7 @@ ECS.insert_component(crosshair, "sprite", "insect.png")
 
 local label = ECS.new_entity()
 ECS.insert_component(label, "transform", Transform.new():with_scale(vec3.new(1)):with_position(vec3.new(0, 0, 0)))
-ECS.insert_component(label, "text", Text.new("aeiou"))
+ECS.insert_component(label, "text", Text.new("ae\niou"))
 
 
 local speed_boost = ECS.new_entity()

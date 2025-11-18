@@ -39,7 +39,7 @@ fn vertex(in: VertexInput, @builtin(instance_index) index: u32) -> VertexOutput 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4f {
     var tex_color = textureSample(texData, texSampler, in.texcoords).rgba * instance_data.albedo;
-    if (tex_color.a < 0.0001) { discard; }
+    if (tex_color.a < 0.1) { discard; }
 
     var ambient = .1 * tex_color.rgb;
     var diffuse_intensity = max(dot(normalize(in.normal), -uniforms.directional_light_hat), 0.f);

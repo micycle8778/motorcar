@@ -1647,6 +1647,143 @@ void GraphicsManager::draw_colliders(WGPUTextureView surface_texture_view, WGPUT
     wgpuBufferRelease(matrix_buffer);
 }
 
+static bool warn_flag_sprite_3d = false;
+void GraphicsManager::draw_sprite_3d(WGPUTextureView surface_texture_view, WGPUTextureView depth_texture_view) {
+    auto it = engine.ecs->query<Entity, Sprite3D, GlobalTransform>() |
+        std::views::filter([&](auto t) {
+            return !std::get<Sprite3D*>(t)->resource_path.empty();
+        });
+
+    if (it.begin() == it.end()) {
+        if (!warn_flag_sprite_3d) {
+            SPDLOG_TRACE("no sprite3d's, skipping");
+        }
+        warn_flag_sprite_3d = true;
+        return;
+    }
+    warn_flag_sprite_3d = false;
+
+    u32 sprite_count = 0;
+    for (auto _it = it.begin(); _it != it.end(); _it++) sprite_count++;
+
+    WGPUBuffer matrix_buffer = wgpuDeviceCreateBuffer(webgpu->device, to_ptr(WGPUBufferDescriptor {
+        .label = WGPUStringView( "3D Matrix Buffer", WGPU_STRLEN ),
+        .usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst,
+        .size = 256 * sprite_count,
+    }));
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(webgpu->device, nullptr);
+
+    WGPURenderPassEncoder render_pass = wgpuCommandEncoderBeginRenderPass( encoder, to_ptr<WGPURenderPassDescriptor>({
+        .colorAttachmentCount = 1,
+        .colorAttachments = to_ptr<WGPURenderPassColorAttachment>({{
+            .view = surface_texture_view,
+            .depthSlice = WGPU_DEPTH_SLICE_UNDEFINED, // not a 3D texture
+            .loadOp = WGPULoadOp_Load,
+            .storeOp = WGPUStoreOp_Store,
+            // Choose the background color.
+            .clearValue = WGPUColor{ 0, 0, 0, 0 }
+        }}),
+        .depthStencilAttachment = to_ptr(WGPURenderPassDepthStencilAttachment {
+            .view = depth_texture_view,
+            .depthLoadOp = WGPULoadOp_Load,
+            .depthStoreOp = WGPUStoreOp_Store,
+            .depthClearValue = 1.,
+        }),
+    }) );
+
+    wgpuRenderPassEncoderSetPipeline( render_pass, webgpu->pipeline_3d );
+    WGPUBindGroupLayout bind_group_layout_3d_2 = wgpuRenderPipelineGetBindGroupLayout(webgpu->pipeline_3d, 1);
+    mat4 projection_matrix = glm::perspective(glm::radians(90.f), 16.f / 9.f, 0.1f, 1000.f);
+
+    GlobalTransform camera_transform = GlobalTransform({1}, {1});
+    auto camera_it = engine.ecs->query<GlobalTransform, Camera>();
+    if (!camera_it.empty()) camera_transform = *std::get<GlobalTransform*>(*camera_it.begin());
+    mat4 view_matrix = glm::lookAt(
+        vec3(camera_transform.model[3]),
+        vec3(camera_transform.model * vec4(vec3(0, 0, -1), 1)),
+        camera_transform.normal * vec3(0, 1, 0)
+    );
+
+    Uniforms3D uniforms{};
+    uniforms.view_projection = projection_matrix * view_matrix;
+    uniforms.directional_light_hat = glm::normalize(vec3(2, -3, 0));
+    wgpuQueueWriteBuffer(webgpu->queue, webgpu->uniforms_buffer_3d, 0, &uniforms, sizeof(Uniforms3D));
+
+    VertexData3D vertices[] = {
+        { -.5f, -.5f, 0.f, 0.f, 1.f, .0f, .0f, 1.f}, // top-left
+        {  .5f, -.5f, 0.f, 1.f, 1.f, .0f, .0f, 1.f}, // top-right
+        { -.5f,  .5f, 0.f, 0.f, 0.f, .0f, .0f, 1.f}, // bottom-left
+
+        {  .5f, -.5f, 0.f, 1.f, 1.f, .0f, .0f, 1.f}, // top-right
+        { -.5f,  .5f, 0.f, 0.f, 0.f, .0f, .0f, 1.f}, // bottom-left
+        {  .5f,  .5f, 0.f, 1.f, 0.f, .0f, .0f, 1.f}, // bottom-right
+    };
+    WGPUBuffer vertex_buffer = wgpuDeviceCreateBuffer(webgpu->device, to_ptr(WGPUBufferDescriptor {
+        .label = WGPUStringView( "Sprite 3D Vertex Buffer", WGPU_STRLEN ),
+        .usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
+        .size = sizeof(vertices)
+    }));
+    wgpuQueueWriteBuffer(webgpu->queue, vertex_buffer, 0, vertices, sizeof(vertices));
+    wgpuRenderPassEncoderSetVertexBuffer(render_pass, 0, vertex_buffer, 0, sizeof(vertices));
+
+    u32 instance_counter = 0;
+    for (auto [entity, sprite, transform] : it) {
+        auto maybe_tex = engine.resources->get_resource<Texture>(sprite->resource_path);
+        if (!maybe_tex.has_value()) continue;
+        Texture* texture = maybe_tex.value();
+
+        Albedo default_albedo = vec4(1.);
+        vec4 albedo = engine.ecs->get_native_component<Albedo>(entity).value_or(&default_albedo)->color;
+
+        mat4 model_matrix = transform->model;
+        mat4 normal_matrix = transform->normal;
+
+        InstanceData3D instance_data {
+            model_matrix,
+            normal_matrix[0],
+            normal_matrix[1],
+            normal_matrix[2],
+            albedo
+        };
+
+        wgpuQueueWriteBuffer(webgpu->queue, matrix_buffer, instance_counter*256, &instance_data, sizeof(InstanceData3D));
+
+        WGPUBindGroup matrix_bind_group = wgpuDeviceCreateBindGroup(webgpu->device, to_ptr(WGPUBindGroupDescriptor {
+            .label = WGPUStringView("3D Matrix Bind Group", WGPU_STRLEN),
+            .layout = bind_group_layout_3d_2,
+            .entryCount = 1,
+            .entries = to_ptr<WGPUBindGroupEntry>({
+                {
+                    .binding = 0,
+                    .buffer = matrix_buffer,
+                    .offset = instance_counter * 256,
+                    .size = sizeof(InstanceData3D),
+                },
+            }),
+        }));
+
+        wgpuRenderPassEncoderSetBindGroup(render_pass, 0, texture->bind_group_3d, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(render_pass, 1, matrix_bind_group, 0, nullptr);
+        wgpuRenderPassEncoderDraw(render_pass, 6, 1, 0, 0);
+
+        instance_counter++;
+        wgpuBindGroupRelease(matrix_bind_group);
+    }
+
+
+    wgpuRenderPassEncoderEnd(render_pass);
+    WGPUCommandBuffer command_buffer = wgpuCommandEncoderFinish( encoder, nullptr );
+    wgpuQueueSubmit( webgpu->queue, 1, &command_buffer );
+
+    wgpuCommandBufferRelease(command_buffer);
+    wgpuRenderPassEncoderRelease(render_pass);
+    wgpuCommandEncoderRelease(encoder);
+    wgpuBindGroupLayoutRelease(bind_group_layout_3d_2);
+    wgpuBufferRelease(matrix_buffer);
+
+    wgpuBufferRelease(vertex_buffer);
+}
+
 void GraphicsManager::draw() {
     glfwPollEvents();
 
@@ -1661,6 +1798,7 @@ void GraphicsManager::draw() {
         draw_colliders(surface_texture_view, depth_texture_view);
     draw_sprites(surface_texture_view, depth_texture_view);
     draw_text(surface_texture_view, depth_texture_view);
+    draw_sprite_3d(surface_texture_view, depth_texture_view);
 
     wgpuSurfacePresent( webgpu->surface );
     wgpuTextureViewRelease(surface_texture_view);

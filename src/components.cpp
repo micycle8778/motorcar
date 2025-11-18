@@ -62,6 +62,11 @@ void motorcar::register_components_to_lua(sol::state& state) {
         sol::constructors<Text(std::string)>(),
         "text", &Text::text
     );
+
+    state.new_usertype<Sprite3D>("Sprite3D",
+        sol::constructors<Sprite3D(std::string)>(),
+        "resource_path", &Sprite3D::resource_path
+    );
 }
 
 void motorcar::register_components_to_ecs(ECSWorld &world) {
@@ -73,6 +78,7 @@ void motorcar::register_components_to_ecs(ECSWorld &world) {
     world.register_component<GLTF>();
     world.register_component<Albedo>();
     world.register_component<Text>();
+    world.register_component<Sprite3D>();
 
     world.register_component<System>();
     world.register_component<EventHandler>();

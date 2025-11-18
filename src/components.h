@@ -292,6 +292,21 @@ namespace motorcar {
         }
     };
     COMPONENT_TYPE_TRAIT(Text, "text");
+
+    struct Sprite3D {
+        std::string resource_path;
+        Sprite3D(std::string resource_path) : resource_path(resource_path) {}
+        Sprite3D(sol::object object) {
+            if (object.is<std::string>()) {
+                resource_path = object.as<std::string>();
+            } else if (object.is<Sprite3D>()) {
+                *this = object.as<Sprite3D>();
+            } else {
+                throw std::runtime_error("object is not convertible to Sprite3D");
+            }
+        }
+    };
+    COMPONENT_TYPE_TRAIT(Sprite3D, "sprite3d");
     
     void register_components_to_lua(sol::state& state);
     void register_components_to_ecs(ECSWorld& world);

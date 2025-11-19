@@ -136,6 +136,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable( sol2 )
 
 # assimp
+set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     assimp
     GIT_REPOSITORY https://github.com/assimp/assimp.git
@@ -183,6 +184,7 @@ if (MSVC)
     # set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}   /fsanitize=address")
 
     target_compile_options(motorcar PRIVATE /W4)
+    add_compile_definitions(NOMINMAX)
 else()
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
     set(CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}   -fsanitize=address -fno-omit-frame-pointer")

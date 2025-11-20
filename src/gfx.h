@@ -2,7 +2,7 @@
 
 #include <memory>
 #include <string_view>
-#include <webgpu.h>
+#include <webgpu/webgpu.h>
 
 struct GLFWwindow;
 

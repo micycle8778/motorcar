@@ -73,7 +73,7 @@ add_library(incbin STATIC "${incbin_SOURCE_DIR}/incbin.c")
 target_include_directories(incbin PUBLIC "${incbin_SOURCE_DIR}")
 
 # webgpu
-set(WEBGPU_BACKEND "wgpu" CACHE STRING "WebGPU backend (wgpu or dawn)")
+set(WEBGPU_BACKEND "dawn" CACHE STRING "WebGPU backend (wgpu or dawn)")
 FetchContent_Declare(
   webgpu
   GIT_REPOSITORY https://github.com/yig/WebGPU-distribution

@@ -72,6 +72,8 @@ namespace motorcar {
 
             template <typename T>
             std::optional<T*> get_resource(std::string_view resource_path);
+            template <typename T>
+            bool has_resource(std::string_view resource_path);
             bool load_resource(std::string_view resource_path);
             void insert_resource(std::string_view resource_path, Resource&& resource);
 
@@ -93,6 +95,26 @@ std::optional<T*> motorcar::ResourceManager::get_resource(std::string_view resou
             return maybe;
         } else {
             return {};
+        }
+    } else [[unlikely]] {
+        // unreachable
+        std::abort();
+    }
+}
+
+template <typename T>
+bool motorcar::ResourceManager::has_resource(std::string_view resource_path) {
+    if (!load_resource(resource_path)) {
+        return false;
+    }
+    
+    // look for T in `path_to_resource_map`
+    if (path_to_resource_map.contains(svhasher{}(resource_path))) {
+        auto maybe = path_to_resource_map[svhasher{}(resource_path)].get<T>();
+        if (maybe.has_value()) {
+            return true;
+        } else {
+            return false;
         }
     } else [[unlikely]] {
         // unreachable

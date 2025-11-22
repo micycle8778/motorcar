@@ -87,6 +87,15 @@ namespace {
     template< typename T > constexpr const T* to_ptr( const T& val ) { return &val; }
     template< typename T, std::size_t N > constexpr const T* to_ptr( const T (&&arr)[N] ) { return arr; }
 
+    glm::mat4 to_glm(const aiMatrix4x4& aiMat) {
+        return glm::mat4(
+                aiMat.a1, aiMat.b1, aiMat.c1, aiMat.d1,
+                aiMat.a2, aiMat.b2, aiMat.c2, aiMat.d2,
+                aiMat.a3, aiMat.b3, aiMat.c3, aiMat.d3,
+                aiMat.a4, aiMat.b4, aiMat.c4, aiMat.d4
+                );
+    }
+
     struct InstanceData2D {
         vec3 translation;
         vec2 scale;
@@ -308,7 +317,32 @@ namespace {
             {}
         };
 
+        struct SceneObject {
+            mat4 transform;
+            u32 mesh_index;
+            std::string name;
+        };
+
         std::vector<MeshBundle> mesh_bundles;
+        std::vector<SceneObject> objects;
+
+        void process_node(aiNode* node) {
+            SPDLOG_TRACE("found gltf scene object {}", node->mName.C_Str());
+            if (node->mNumMeshes != 0) {
+                if (node->mNumMeshes > 1) {
+                    SPDLOG_ERROR("scene object {} has more than one mesh. it will not be imported correctly.");
+                }
+                objects.push_back(SceneObject {
+                    .transform = to_glm(node->mTransformation),
+                    .mesh_index = *node->mMeshes,
+                    .name = node->mName.C_Str(),
+                });
+            } 
+
+            for (u32 idx = 0; idx < node->mNumChildren; idx++) {
+                process_node(node->mChildren[idx]);
+            }
+        }
 
         glTFScene(GraphicsManager::WebGPUState& webgpu, const aiScene* scene, std::string_view resource_path, Engine& engine) {
             // go through every mesh and convert it into usable vertex data on the GPU
@@ -364,7 +398,7 @@ namespace {
 
                         
                         std::string texture_resource_name = std::format("::{}::{}", resource_path, texture_index);
-                        if (!engine.resources->get_resource<Texture>(texture_resource_name)) {
+                        if (!engine.resources->has_resource<Texture>(texture_resource_name)) {
                             int width, height, channels;
                             u8* image_data = stbi_load_from_memory((u8*)texture->pcData, texture->mWidth, &width, &height, &channels, 4);
 
@@ -403,19 +437,17 @@ namespace {
 
                 free(vertex_data);
             }
+
+            // go through every object in the scene and add it to the object list
+            process_node(scene->mRootNode);
+            SPDLOG_TRACE("objects acquired: {}", objects.size());
         }
 
         glTFScene(glTFScene&) = delete;
         glTFScene& operator=(glTFScene&) = delete;
         
-        glTFScene(glTFScene&& other) {
-            mesh_bundles = std::move(other.mesh_bundles);
-        }
-
-        glTFScene& operator=(glTFScene&& other) {
-            mesh_bundles = std::move(other.mesh_bundles);
-            return *this;
-        }
+        glTFScene(glTFScene&& other) = default;
+        glTFScene& operator=(glTFScene&& other) = default;
         
         ~glTFScene() {
             for (auto bundle : mesh_bundles) {
@@ -1415,7 +1447,9 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view, WGPUTextureV
     warn_flag_3d = false;
 
     u32 gltf_count = 0;
-    for (auto _it = it.begin(); _it != it.end(); _it++) gltf_count += 1;
+    for (auto _it = it.begin(); _it != it.end(); _it++) {
+        gltf_count += std::get<glTFScene*>(*_it)->objects.size();
+    }
 
     WGPUBuffer matrix_buffer = wgpuDeviceCreateBuffer(webgpu->device, to_ptr(WGPUBufferDescriptor {
         .label = WGPUStringView( "3D Matrix Buffer", WGPU_STRLEN ),
@@ -1482,43 +1516,43 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view, WGPUTextureV
         mat4 model_matrix = transform->model;
         mat4 normal_matrix = transform->normal;
 
-        InstanceData3D instance_data {
-            model_matrix,
-            normal_matrix[0],
-            normal_matrix[1],
-            normal_matrix[2],
-            albedo
-        };
+        for (auto& obj : scene->objects) {
+            InstanceData3D instance_data {
+                model_matrix * obj.transform,
+                normal_matrix[0],
+                normal_matrix[1],
+                normal_matrix[2],
+                albedo
+            };
 
-        wgpuQueueWriteBuffer(webgpu->queue, matrix_buffer, instance_counter*256, &instance_data, sizeof(InstanceData3D));
+            wgpuQueueWriteBuffer(webgpu->queue, matrix_buffer, instance_counter*256, &instance_data, sizeof(InstanceData3D));
 
-        WGPUBindGroup matrix_bind_group = wgpuDeviceCreateBindGroup(webgpu->device, to_ptr(WGPUBindGroupDescriptor {
-            .label = WGPUStringView("3D Matrix Bind Group", WGPU_STRLEN),
-            .layout = bind_group_layout_3d_2,
-            .entryCount = 1,
-            .entries = to_ptr<WGPUBindGroupEntry>({
-                {
-                    .binding = 0,
-                    .buffer = matrix_buffer,
-                    .offset = instance_counter * 256,
-                    .size = sizeof(InstanceData3D),
-                },
-            }),
-        }));
+            WGPUBindGroup matrix_bind_group = wgpuDeviceCreateBindGroup(webgpu->device, to_ptr(WGPUBindGroupDescriptor {
+                .label = WGPUStringView("3D Matrix Bind Group", WGPU_STRLEN),
+                .layout = bind_group_layout_3d_2,
+                .entryCount = 1,
+                .entries = to_ptr<WGPUBindGroupEntry>({
+                    {
+                        .binding = 0,
+                        .buffer = matrix_buffer,
+                        .offset = instance_counter * 256,
+                        .size = sizeof(InstanceData3D),
+                    },
+                }),
+            }));
 
-        wgpuRenderPassEncoderSetBindGroup(render_pass, 1, matrix_bind_group, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(render_pass, 1, matrix_bind_group, 0, nullptr);
 
-        for (auto bundle : scene->mesh_bundles) {
+            auto& bundle = scene->mesh_bundles[obj.mesh_index];
             if (!bundle.should_draw) continue;
             Texture* texture = engine.resources->get_resource<Texture>(bundle.diffuse_texture).value();
             wgpuRenderPassEncoderSetBindGroup(render_pass, 0, texture->bind_group_3d, 0, nullptr);
             wgpuRenderPassEncoderSetVertexBuffer(render_pass, 0 /* slot */, bundle.buffer, 0, bundle.vertex_count * sizeof(VertexData3D));
             wgpuRenderPassEncoderDraw(render_pass, bundle.vertex_count, 1, 0, 0);
+
+            instance_counter++;
+            wgpuBindGroupRelease(matrix_bind_group);
         }
-
-        instance_counter++;
-
-        wgpuBindGroupRelease(matrix_bind_group);
     }
 
     wgpuRenderPassEncoderEnd(render_pass);
@@ -1795,12 +1829,14 @@ void GraphicsManager::draw() {
     WGPUTextureView depth_texture_view = wgpuTextureCreateView(webgpu->depth_texture, nullptr);
 
     clear_screen(surface_texture_view, depth_texture_view);
+
     draw_3d(surface_texture_view, depth_texture_view);
+    draw_sprite_3d(surface_texture_view, depth_texture_view);
     if (engine.render_collision_shapes)
         draw_colliders(surface_texture_view, depth_texture_view);
+
     draw_sprites(surface_texture_view, depth_texture_view);
     draw_text(surface_texture_view, depth_texture_view);
-    draw_sprite_3d(surface_texture_view, depth_texture_view);
 
     wgpuSurfacePresent( webgpu->surface );
     wgpuTextureViewRelease(surface_texture_view);

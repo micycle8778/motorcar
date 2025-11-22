@@ -1,6 +1,15 @@
 struct Uniforms {
     view_projection: mat4x4f,
-    directional_light_hat: vec3f,
+    camera_pos: vec3f,
+};
+
+struct LightData {
+    ambient: vec3f,
+    diffuse: vec3f,
+    specular: vec3f,
+
+    position: vec3f,
+    distance: f32
 };
 
 struct InstanceData {
@@ -9,9 +18,12 @@ struct InstanceData {
     albedo: vec4f
 };
 
+const NUM_LIGHTS: u32 = 8;
+
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var texSampler: sampler;
 @group(0) @binding(2) var texData: texture_2d<f32>;
+@group(0) @binding(3) var<uniform> lights: array<LightData, NUM_LIGHTS>;
 
 @group(1) @binding(0) var<storage, read> instance_data: InstanceData;
 
@@ -25,6 +37,7 @@ struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) texcoords: vec2f,
     @location(1) normal: vec3f,
+    @location(2) world_coords: vec3f,
 };
 
 @vertex
@@ -33,17 +46,36 @@ fn vertex(in: VertexInput, @builtin(instance_index) index: u32) -> VertexOutput 
     out.position = uniforms.view_projection * instance_data.model_matrix * vec4f(in.position, 1);
     out.texcoords = in.texcoords;
     out.normal = instance_data.normal_matrix * in.normal;
+    out.world_coords = (instance_data.model_matrix * vec4f(in.position, 1.)).xyz;
     return out;
 }
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4f {
+    let normal = normalize(in.normal);
     var tex_color = textureSample(texData, texSampler, in.texcoords).rgba * instance_data.albedo;
     if (tex_color.a < 0.1) { discard; }
 
-    var ambient = .1 * tex_color.rgb;
-    var diffuse_intensity = max(dot(normalize(in.normal), -uniforms.directional_light_hat), 0.f);
-    var diffuse = tex_color.rgb * diffuse_intensity;
+    var ret = vec3f(.05);
+    for (var idx = 0u; idx < NUM_LIGHTS; idx = idx + 1u) {
+        let light = lights[idx];
 
-    return vec4f(ambient + diffuse, tex_color.a);
+        let attenuation = 1f - smoothstep(0f, light.distance, distance(in.world_coords, light.position));
+        // let attenuation = 1f;
+        let light_dir = normalize(light.position - in.world_coords);
+        let view_dir = normalize(uniforms.camera_pos - in.world_coords);
+
+        let diffuse_power = max(dot(normal, light_dir), 0.);
+        let a = light.ambient * attenuation;
+        let d = light.diffuse * diffuse_power * attenuation;
+        // TODO: add specular materials
+        let s = light.specular * pow(max(dot(normal, normalize(light_dir + view_dir)), 0.), 1.) * attenuation;
+
+        ret += a + d;
+        if (diffuse_power > 0.) {
+            ret += s;
+        }
+    }
+
+    return vec4f(ret * tex_color.rgb, tex_color.a);
 }

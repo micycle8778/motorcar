@@ -1,4 +1,3 @@
-#include <iterator>
 #include <memory>
 #include <sol/raii.hpp>
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
@@ -20,7 +19,6 @@
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb_truetype.h>
-// #include <stb_rect_pack.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
@@ -75,6 +73,8 @@ struct GraphicsManager::WebGPUState {
     WGPURenderPipeline pipeline_2d = nullptr;
     WGPUBindGroupLayout layout_2d = nullptr;
 
+    WGPUBuffer light_buffer = nullptr;
+
     WebGPUState(GLFWwindow*);
 
     void configure_surface(GLFWwindow* window);
@@ -128,8 +128,18 @@ namespace {
 
     struct Uniforms3D {
         mat4 view_projection;
-        vec3 directional_light_hat;
-        f32 _padding = 0;
+        vec3 camera_pos;
+        f32 _padding;
+    };
+
+    constexpr u32 NUM_LIGHTS = 8;
+    struct LightData {
+        vec4 ambient;
+        vec4 diffuse;
+        vec4 specular;
+
+        vec3 position;
+        f32 distance;
     };
 
     WGPUTextureFormat wgpuSurfaceGetPreferredFormat( WGPUSurface surface, WGPUAdapter adapter ) {
@@ -213,7 +223,7 @@ namespace {
             bind_group_3d = wgpuDeviceCreateBindGroup(webgpu.device, to_ptr(WGPUBindGroupDescriptor{
                 .label = WGPU_STRING_VIEW("Texture Bind Group 3D"),
                 .layout = webgpu.layout_3d,
-                .entryCount = 3,
+                .entryCount = 4,
                 // The entries `.binding` matches what we wrote in the shader.
                 .entries = to_ptr<WGPUBindGroupEntry>({
                     {
@@ -228,7 +238,13 @@ namespace {
                     {
                         .binding = 2,
                         .textureView = texture_view
-                    }
+                    },
+
+                    {
+                        .binding = 3,
+                        .buffer = webgpu.light_buffer,
+                        .size = sizeof(LightData) * NUM_LIGHTS
+                    },
                 })
             }));
         }
@@ -567,6 +583,27 @@ namespace {
         }
     };
 
+    void write_to_light_buffer(GraphicsManager::WebGPUState& webgpu, Engine& engine) {
+        LightData lights[NUM_LIGHTS];
+        memset(lights, 0, sizeof(lights));
+        u32 idx = 0;
+        for (auto [transform, light] : engine.ecs->query<GlobalTransform, Light>()) {
+            if (idx == 8) {
+                SPDLOG_ERROR("more than 8 lights in the scene! 8 is the max number of lights");
+                break;
+            }
+
+            lights[idx] = LightData {
+                .ambient = vec4(light->ambient, 1.),
+                .diffuse = vec4(light->diffuse, 1.),
+                .specular = vec4(light->specular, 1.),
+                .position = transform->model * vec4(0.f, 0.f, 0.f, 1.f),
+                .distance = light->distance
+            };
+            idx++;
+        }
+        wgpuQueueWriteBuffer(webgpu.queue, webgpu.light_buffer, 0, &lights, sizeof(lights));
+    }
 }
 
 void GraphicsManager::WebGPUState::configure_surface(GLFWwindow* window) {
@@ -876,11 +913,17 @@ void GraphicsManager::WebGPUState::init_pipeline_3d() {
     }));
     wgpuQueueWriteBuffer(queue, cube_vertex_buffer, 0, cube_vertices, sizeof(cube_vertices));
 
-    uniforms_buffer_3d = wgpuDeviceCreateBuffer( device, to_ptr( WGPUBufferDescriptor{
-        .label = WGPUStringView( "3D Uniform Buffer", WGPU_STRLEN ),
+    uniforms_buffer_3d = wgpuDeviceCreateBuffer(device, to_ptr(WGPUBufferDescriptor {
+        .label = WGPUStringView("3D Uniform Buffer", WGPU_STRLEN),
         .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform,
         .size = sizeof(Uniforms3D)
-    }) );
+    }));
+
+    light_buffer = wgpuDeviceCreateBuffer( device, to_ptr(WGPUBufferDescriptor {
+        .label = WGPUStringView("Light Buffer", WGPU_STRLEN),
+        .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform,
+        .size = sizeof(LightData) * NUM_LIGHTS
+    }));
 
     WGPUShaderSourceWGSL source_desc = {};
     source_desc.chain.sType = WGPUSType_ShaderSourceWGSL;
@@ -1435,8 +1478,17 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view, WGPUTextureV
         }) |
         std::views::filter([&](auto scene) { return scene.has_value(); }) |
         std::views::transform([&](auto scene) { return scene.value(); });
+
+    u32 gltf_count = 0;
+    for (auto _it = it.begin(); _it != it.end(); _it++) {
+        auto scene = std::get<glTFScene*>(*_it);
+        gltf_count += scene->objects.size();
+        // for (auto& obj : std::get<glTFScene*>(*_it)->objects) {
+        //     if (scene->mesh_bundles[obj.mesh_index].should_draw) gltf_count++;
+        // }
+    }
         
-    if (it.begin() == it.end()) {
+    if (gltf_count == 0) {
         if (!warn_flag_3d) {
             SPDLOG_TRACE("no GLTFs. skipping!");
         }
@@ -1445,11 +1497,6 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view, WGPUTextureV
     }
 
     warn_flag_3d = false;
-
-    u32 gltf_count = 0;
-    for (auto _it = it.begin(); _it != it.end(); _it++) {
-        gltf_count += std::get<glTFScene*>(*_it)->objects.size();
-    }
 
     WGPUBuffer matrix_buffer = wgpuDeviceCreateBuffer(webgpu->device, to_ptr(WGPUBufferDescriptor {
         .label = WGPUStringView( "3D Matrix Buffer", WGPU_STRLEN ),
@@ -1490,23 +1537,20 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view, WGPUTextureV
 
     auto camera_it = engine.ecs->query<GlobalTransform, Camera>();
     if (!camera_it.empty()) camera_transform = *std::get<GlobalTransform*>(*camera_it.begin());
+    vec3 camera_pos = camera_transform.model[3];
 
     mat4 view_matrix = glm::lookAt(
-        vec3(camera_transform.model[3]),
+        camera_pos,
         vec3(camera_transform.model * vec4(vec3(0, 0, -1), 1)),
         camera_transform.normal * vec3(0, 1, 0)
     );
-    // mat4 view_matrix = glm::lookAt(
-    //         vec3(0, 0, 3),
-    //         vec3(0, 0, 0),
-    //         vec3(0, 1, 0)
-    // );
-    // view_matrix = glm::rotate(view_matrix, (f32)glfwGetTime(), vec3(0, 1, 0));
 
     Uniforms3D uniforms{};
     uniforms.view_projection = projection_matrix * view_matrix;
-    uniforms.directional_light_hat = glm::normalize(vec3(2, -3, 0));
+    uniforms.camera_pos = camera_pos;
     wgpuQueueWriteBuffer(webgpu->queue, webgpu->uniforms_buffer_3d, 0, &uniforms, sizeof(Uniforms3D));
+
+    write_to_light_buffer(*webgpu, engine);
 
     u32 instance_counter = 0;
     for (auto [entity, scene, transform] : it) {
@@ -1619,8 +1663,8 @@ void GraphicsManager::draw_colliders(WGPUTextureView surface_texture_view, WGPUT
     
     Uniforms3D uniforms{};
     uniforms.view_projection = projection_matrix * view_matrix;
-    uniforms.directional_light_hat = glm::normalize(vec3(2, -3, 0));
     wgpuQueueWriteBuffer(webgpu->queue, webgpu->uniforms_buffer_3d, 0, &uniforms, sizeof(Uniforms3D));
+
 
     wgpuRenderPassEncoderSetBindGroup(render_pass, 0, webgpu->bind_group_colliders, 0, nullptr);
 
@@ -1734,16 +1778,19 @@ void GraphicsManager::draw_sprite_3d(WGPUTextureView surface_texture_view, WGPUT
     GlobalTransform camera_transform = GlobalTransform({1}, {1});
     auto camera_it = engine.ecs->query<GlobalTransform, Camera>();
     if (!camera_it.empty()) camera_transform = *std::get<GlobalTransform*>(*camera_it.begin());
+    vec3 camera_pos = camera_transform.model[3];
     mat4 view_matrix = glm::lookAt(
-        vec3(camera_transform.model[3]),
+        camera_pos,
         vec3(camera_transform.model * vec4(vec3(0, 0, -1), 1)),
         camera_transform.normal * vec3(0, 1, 0)
     );
 
     Uniforms3D uniforms{};
     uniforms.view_projection = projection_matrix * view_matrix;
-    uniforms.directional_light_hat = glm::normalize(vec3(2, -3, 0));
+    uniforms.camera_pos = camera_pos;
     wgpuQueueWriteBuffer(webgpu->queue, webgpu->uniforms_buffer_3d, 0, &uniforms, sizeof(Uniforms3D));
+
+    write_to_light_buffer(*webgpu, engine);
 
     VertexData3D vertices[] = {
         { -.5f, -.5f, 0.f, 0.f, 1.f, .0f, .0f, 1.f}, // top-left
@@ -1847,6 +1894,7 @@ void GraphicsManager::draw() {
 GraphicsManager::~GraphicsManager() {
     wgpuBufferRelease(webgpu->cube_vertex_buffer);
     wgpuBufferRelease(webgpu->uniforms_buffer_3d);
+    wgpuBufferRelease(webgpu->light_buffer);
     wgpuShaderModuleRelease(webgpu->shader_module_3d);
     wgpuShaderModuleRelease(webgpu->shader_module_colliders);
     wgpuRenderPipelineRelease(webgpu->pipeline_colliders);

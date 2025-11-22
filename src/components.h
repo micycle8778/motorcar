@@ -307,6 +307,25 @@ namespace motorcar {
         }
     };
     COMPONENT_TYPE_TRAIT(Sprite3D, "sprite3d");
+
+    struct Light {
+        vec3 ambient;
+        vec3 diffuse;
+        vec3 specular;
+        f32 distance;
+
+        Light(vec3 color, f32 distance, f32 ambient_power = 0.1f) : 
+            Light(color * ambient_power, color, color, distance) {}
+        Light(vec3 ambient, vec3 diffuse, vec3 specular, f32 distance) :
+            ambient(ambient),
+            diffuse(diffuse),
+            specular(specular),
+            distance(distance)
+        {}
+
+        DEFAULT_LUA_CONSTRUCTABLE(Light);
+    };
+    COMPONENT_TYPE_TRAIT(Light, "light");
     
     void register_components_to_lua(sol::state& state);
     void register_components_to_ecs(ECSWorld& world);

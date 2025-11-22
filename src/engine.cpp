@@ -102,6 +102,9 @@ void Engine::run() {
         if (input->is_key_pressed_this_frame("f3")) {
             render_collision_shapes = !render_collision_shapes;
         }
+        if (input->is_key_pressed_this_frame("f4")) {
+            render_lights = !render_lights;
+        }
     });
 
     scripts->load_plugins();

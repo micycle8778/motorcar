@@ -1064,7 +1064,8 @@ void GraphicsManager::WebGPUState::init_pipeline_3d() {
         .depthStencil = to_ptr(WGPUDepthStencilState {
             .format = WGPUTextureFormat_Depth24Plus,
             .depthWriteEnabled = WGPUOptionalBool_True,
-            .depthCompare = WGPUCompareFunction_Less,
+            .depthCompare = WGPUCompareFunction_LessEqual,
+            .depthBias = -10
         }),
 
         .multisample = WGPUMultisampleState {

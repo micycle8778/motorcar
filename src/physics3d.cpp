@@ -232,10 +232,10 @@ PhysicsManager::PhysicsManager(Engine& engine) : engine(engine) {
                         }
 
                         if (engine.ecs->entity_has_native_component<KinematicBody>(ith_entity)) {
-                            engine.ecs->get_native_component<Transform>(ith_entity).value()->position += displacement;
+                            engine.ecs->get_native_component<Transform>(ith_entity).value()->position -= displacement;
                         } else if (engine.ecs->entity_has_native_component<KinematicBody>(jth_entity)) {
                             engine.ecs->get_native_component<Transform>(jth_entity).value()->position += displacement;
-                        } 
+                        }
                     }
                 }
             }

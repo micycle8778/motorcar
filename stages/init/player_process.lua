@@ -1,3 +1,5 @@
+ECS.register_component("gun")
+
 -- move player
 ECS.register_system({ "global_transform", "transform", "player" },
 function(player)
@@ -101,3 +103,40 @@ end, "render")
 --
 --     end
 -- end, "render")
+
+--Gun spawn logic
+ECS.register_system({"entity", "camera"},
+function(player_camera)
+    if Input.is_key_pressed_this_frame("r") then
+
+        local e -- entity | nil
+        ECS.for_each({"entity", "gun"}, function(x) e = x.entity end)
+
+        if e == nil then
+            local gun = ECS.new_entity()
+            ECS.insert_component(gun, "gltf", "launcher.glb")
+            ECS.insert_component(gun, "transform", Transform.new()
+            :with_position(vec3.new(1., 0., 0.))
+            :rotated(vec3.new(0, 1, 0), 3.14))
+            ECS.insert_component(gun, "parent", player_camera.entity)
+            ECS.insert_component(gun, "gun", {})
+            ECS.insert_component(gun, "food_type", "slop")
+        else
+            ECS.delete_entity(e)
+        end
+    end
+end, "render")
+
+--Gun fire logic
+ECS.register_system({"gun", "global_transform", "food_type"} ,
+function(gun)
+
+    if(Input.is_key_pressed_this_frame("m1")) then
+        local food = ECS.new_entity()
+        ECS.insert_component(food, "gltf", "slop.glb")
+        ECS.insert_component(food, "transform", Transform.new()
+        :with_position(gun.global_transform:position() + (2 *gun.global_transform:backward())))
+        ECS.insert_component(food, "type", gun.food_type)
+        ECS.insert_component(food, "slop", {direction = gun.global_transform:backward()})
+    end
+end, "render")

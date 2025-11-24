@@ -63,8 +63,6 @@ InputManager::InputManager(Engine& engine)
                 break;
         }
 
-        SPDLOG_TRACE("{}", key);
-
         if (action == GLFW_RELEASE) {
             us.state.keys_released_this_frame[key] = true;
         } else {

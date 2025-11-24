@@ -203,7 +203,15 @@ namespace {
         }
 
         std::string code { std::istreambuf_iterator<char>(file_stream), std::istreambuf_iterator<char>() };
-        sol::protected_function script = script_manager.lua.load(code, script_name);
+        sol::load_result load_result = script_manager.lua.load(code, script_name);
+
+        if (!load_result.valid()) {
+            sol::error err = load_result;
+            SPDLOG_ERROR("failed loading script {}: err.what(): {}", file_path.string(), err.what());
+            return;
+        }
+
+        sol::protected_function script = load_result;
 
         for (auto [e, bound_to_script] : engine.ecs->query<Entity, BoundToScript>()) {
             if (bound_to_script->script_name == script_name) {

@@ -337,26 +337,34 @@ namespace {
             mat4 transform;
             u32 mesh_index;
             std::string name;
+            AABB aabb;
         };
 
         std::vector<MeshBundle> mesh_bundles;
         std::vector<SceneObject> objects;
 
-        void process_node(aiNode* node) {
+        void process_node(const aiScene* scene, const aiNode* node) {
             SPDLOG_TRACE("found gltf scene object {}", node->mName.C_Str());
             if (node->mNumMeshes != 0) {
                 if (node->mNumMeshes > 1) {
                     SPDLOG_ERROR("scene object {} has more than one mesh. it will not be imported correctly.");
                 }
+                mat4 matrix = to_glm(node->mTransformation);
+
+                AABB aabb = mesh_bundles[*node->mMeshes].aabb;
+                aabb.center = matrix * vec4(aabb.center, 1);
+                aabb.half_size = matrix * vec4(aabb.half_size, 0);
+
                 objects.push_back(SceneObject {
-                    .transform = to_glm(node->mTransformation),
+                    .transform = matrix,
                     .mesh_index = *node->mMeshes,
                     .name = node->mName.C_Str(),
+                    .aabb = aabb,
                 });
             } 
 
             for (u32 idx = 0; idx < node->mNumChildren; idx++) {
-                process_node(node->mChildren[idx]);
+                process_node(scene, node->mChildren[idx]);
             }
         }
 
@@ -455,7 +463,7 @@ namespace {
             }
 
             // go through every object in the scene and add it to the object list
-            process_node(scene->mRootNode);
+            process_node(scene, scene->mRootNode);
             SPDLOG_TRACE("objects acquired: {}", objects.size());
         }
 
@@ -725,8 +733,8 @@ void GraphicsManager::WebGPUState::init_pipeline_2d() {
 
     // texture sampler
     sampler = wgpuDeviceCreateSampler( device, to_ptr( WGPUSamplerDescriptor{
-        .addressModeU = WGPUAddressMode_ClampToEdge,
-        .addressModeV = WGPUAddressMode_ClampToEdge,
+        .addressModeU = WGPUAddressMode_Repeat,
+        .addressModeV = WGPUAddressMode_Repeat,
         .magFilter = WGPUFilterMode_Linear,
         .minFilter = WGPUFilterMode_Linear,
         .maxAnisotropy = 1
@@ -1157,6 +1165,11 @@ GraphicsManager::GraphicsManager(
     engine.resources->insert_resource(MISSING_TEXTURE_PATH, Texture(*webgpu, missing_texture_data, 2, 2, MISSING_TEXTURE_PATH));
     engine.resources->insert_resource(BLANK_TEXTURE_PATH, Texture(*webgpu, blank_texture_data, 1, 1, BLANK_TEXTURE_PATH));
 
+    engine.scripts->lua.new_usertype<glTFScene::SceneObject>(
+        "SceneObject", sol::constructors<>(),
+        "name", &glTFScene::SceneObject::name,
+        "aabb", &glTFScene::SceneObject::aabb
+    );
     engine.scripts->lua.new_usertype<glTFScene::MeshBundle>(
         "MeshBundle", sol::constructors<>(),
         "diffuse_texture", &glTFScene::MeshBundle::diffuse_texture,
@@ -1166,7 +1179,8 @@ GraphicsManager::GraphicsManager(
     );
     engine.scripts->lua.new_usertype<glTFScene>(
         "glTFScene", sol::constructors<>(),
-        "mesh_bundles", &glTFScene::mesh_bundles
+        "mesh_bundles", &glTFScene::mesh_bundles,
+        "objects", &glTFScene::objects
     );
 
     sol::table gltf_namespace = engine.scripts->lua["Resources"];

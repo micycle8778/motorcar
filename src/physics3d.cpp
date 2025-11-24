@@ -226,10 +226,15 @@ PhysicsManager::PhysicsManager(Engine& engine) : engine(engine) {
 
                     // if neither is a trigger, then we should try to bump out kinematic bodies
                     if (!one_is_trigger) { 
+                        vec3 displacement = v.value();
+                        if (glm::dot(displacement, jth_body.obb.center - ith_body.obb.center) < 0) {
+                            displacement = -displacement;
+                        }
+
                         if (engine.ecs->entity_has_native_component<KinematicBody>(ith_entity)) {
-                            engine.ecs->get_native_component<Transform>(ith_entity).value()->position += v.value();
+                            engine.ecs->get_native_component<Transform>(ith_entity).value()->position += displacement;
                         } else if (engine.ecs->entity_has_native_component<KinematicBody>(jth_entity)) {
-                            engine.ecs->get_native_component<Transform>(jth_entity).value()->position += v.value();
+                            engine.ecs->get_native_component<Transform>(jth_entity).value()->position += displacement;
                         } 
                     }
                 }

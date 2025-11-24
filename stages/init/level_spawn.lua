@@ -2,7 +2,7 @@ local prefixes = {
     "Wall",
     "Appliances",
     "Divider",
-    "Food"
+    -- "Food"
 }
 
 function has_prefix(s) 

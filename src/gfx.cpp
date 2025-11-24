@@ -1916,6 +1916,10 @@ GraphicsManager::~GraphicsManager() {
     wgpuTextureRelease(webgpu->depth_texture);
     wgpuBindGroupLayoutRelease(webgpu->layout_3d);
 
+    wgpuBindGroupRelease(webgpu->bind_group_colliders);
+    wgpuBindGroupLayoutRelease(webgpu->layout_colliders);
+    wgpuRenderPipelineRelease(webgpu->pipeline_colliders);
+
     wgpuBindGroupLayoutRelease(webgpu->layout_2d);
     wgpuRenderPipelineRelease(webgpu->pipeline_2d);
     wgpuShaderModuleRelease(webgpu->shader_module_2d);

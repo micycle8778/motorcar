@@ -78,5 +78,5 @@ fn fragment(in: VertexOutput) -> @location(0) vec4f {
         ret = max(ret, a);
     }
 
-    return vec4f(ret * tex_color.rgb, tex_color.a);
+    return vec4f(pow(ret * tex_color.rgb, vec3f(1. / 2.2)), tex_color.a);
 }

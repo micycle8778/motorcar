@@ -314,7 +314,7 @@ namespace motorcar {
         vec3 specular;
         f32 distance;
 
-        Light(vec3 color, f32 distance, f32 ambient_power = 0.1f) : 
+        Light(vec3 color, f32 distance, f32 ambient_power = 0.25f) : 
             Light(color * ambient_power, color, color, distance) {}
         Light(vec3 ambient, vec3 diffuse, vec3 specular, f32 distance) :
             ambient(ambient),

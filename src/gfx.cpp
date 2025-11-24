@@ -97,6 +97,21 @@ namespace {
                 );
     }
 
+    static inline double srgbChannelToLinear(double c) {
+        if (c <= 0.04045)
+            return c / 12.92;
+        return std::pow((c + 0.055) / 1.055, 2.4);
+    }
+
+    static inline WGPUColor srgbToLinear(const WGPUColor& c) {
+        WGPUColor out;
+        out.r = srgbChannelToLinear(c.r);
+        out.g = srgbChannelToLinear(c.g);
+        out.b = srgbChannelToLinear(c.b);
+        out.a = c.a; // Alpha is not gamma-encoded
+        return out;
+    }
+
     struct InstanceData2D {
         vec3 translation;
         vec2 scale;
@@ -143,10 +158,30 @@ namespace {
         f32 distance;
     };
 
+    bool srgb = false;
     WGPUTextureFormat wgpuSurfaceGetPreferredFormat( WGPUSurface surface, WGPUAdapter adapter ) {
         WGPUSurfaceCapabilities capabilities{};
         wgpuSurfaceGetCapabilities( surface, adapter, &capabilities );
-        const WGPUTextureFormat result = capabilities.formats[0];
+
+        WGPUTextureFormat preferred_formats[] = {
+            WGPUTextureFormat_BGRA8Unorm,
+            WGPUTextureFormat_RGBA8Unorm,
+            WGPUTextureFormat_BGRA8UnormSrgb,
+            WGPUTextureFormat_RGBA8UnormSrgb,
+        };
+
+        WGPUTextureFormat result = capabilities.formats[0];
+        for (int idx = 0; idx < capabilities.formatCount; idx++) {
+            for (int pdx = 0; pdx < sizeof(preferred_formats) / sizeof(preferred_formats[0]); pdx++) {
+                if (preferred_formats[pdx] == capabilities.formats[idx]) {
+                    result = preferred_formats[pdx];
+                    srgb = pdx >= 2;
+                    goto end_loop;
+                }
+            }
+        }
+        end_loop: {}
+
         wgpuSurfaceCapabilitiesFreeMembers( capabilities );
         return result;
     }
@@ -621,13 +656,15 @@ void GraphicsManager::WebGPUState::configure_surface(GLFWwindow* window) {
     glfwGetFramebufferSize(window, &width, &height);
     wgpuSurfaceConfigure(surface, to_ptr(WGPUSurfaceConfiguration{
         .device = device,
-        .format = WGPUTextureFormat_BGRA8UnormSrgb,  // Force sRGB
-        // .format = wgpuSurfaceGetPreferredFormat(surface, adapter),
+        // .format = WGPUTextureFormat_BGRA8UnormSrgb,  // Force sRGB
+        .format = wgpuSurfaceGetPreferredFormat(surface, adapter),
         .usage = WGPUTextureUsage_RenderAttachment,
         .width = (uint32_t)width,
         .height = (uint32_t)height,
         .presentMode = WGPUPresentMode_Fifo // Explicitly set this because of a Dawn bug
     }));
+
+    SPDLOG_DEBUG("surface preferred format: {}", (int)wgpuSurfaceGetPreferredFormat(surface, adapter));
 
     // recreate the depth texture on resize
     if (depth_texture != nullptr) {
@@ -1207,7 +1244,7 @@ void GraphicsManager::clear_screen(WGPUTextureView surface_texture_view, WGPUTex
             .loadOp = WGPULoadOp_Clear,
             .storeOp = WGPUStoreOp_Store,
             // Choose the background color.
-            .clearValue = WGPUColor{ 0.05, 0.05, 0.075, 1. }
+            .clearValue = srgb ? WGPUColor{ .05, .05, .075, 1. } : WGPUColor{ 0.15, 0.15, 0.25, 1. },
         }}),
         .depthStencilAttachment = to_ptr(WGPURenderPassDepthStencilAttachment {
             .view = depth_texture_view,

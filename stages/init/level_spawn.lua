@@ -29,3 +29,10 @@ for _, obj in ipairs(gltf.objects) do
         ECS.insert_component(wall, "body", Body.new(obj.aabb))
     end
 end
+
+-- local launcher = ECS.new_entity()
+-- ECS.insert_component(launcher, "gltf", "launcher.glb")
+-- ECS.insert_component(launcher, "transform", 
+--     Transform.new()
+--     :with_position(vec3.new(0., 4., 0.))
+-- )

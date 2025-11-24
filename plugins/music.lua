@@ -1,1 +1,1 @@
-Sound.play_music("song.mp3")
+-- Sound.play_music("song.mp3")

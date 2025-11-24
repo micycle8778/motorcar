@@ -1,3 +1,4 @@
+#include "glm/matrix.hpp"
 #include <memory>
 #include <sol/raii.hpp>
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
@@ -620,7 +621,8 @@ void GraphicsManager::WebGPUState::configure_surface(GLFWwindow* window) {
     glfwGetFramebufferSize(window, &width, &height);
     wgpuSurfaceConfigure(surface, to_ptr(WGPUSurfaceConfiguration{
         .device = device,
-        .format = wgpuSurfaceGetPreferredFormat(surface, adapter),
+        .format = WGPUTextureFormat_BGRA8UnormSrgb,  // Force sRGB
+        // .format = wgpuSurfaceGetPreferredFormat(surface, adapter),
         .usage = WGPUTextureUsage_RenderAttachment,
         .width = (uint32_t)width,
         .height = (uint32_t)height,
@@ -1573,9 +1575,9 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view, WGPUTextureV
         vec4 albedo = engine.ecs->get_native_component<Albedo>(entity).value_or(&default_albedo)->color;
 
         mat4 model_matrix = transform->model;
-        mat4 normal_matrix = transform->normal;
 
         for (auto& obj : scene->objects) {
+            mat4 normal_matrix = transform->normal * glm::transpose(glm::inverse(mat3(obj.transform)));
             InstanceData3D instance_data {
                 model_matrix * obj.transform,
                 normal_matrix[0],

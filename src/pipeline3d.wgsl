@@ -45,7 +45,7 @@ fn vertex(in: VertexInput, @builtin(instance_index) index: u32) -> VertexOutput 
     var out: VertexOutput;
     out.position = uniforms.view_projection * instance_data.model_matrix * vec4f(in.position, 1);
     out.texcoords = in.texcoords;
-    out.normal = instance_data.normal_matrix * in.normal;
+    out.normal = normalize(instance_data.normal_matrix * in.normal);
     out.world_coords = (instance_data.model_matrix * vec4f(in.position, 1.)).xyz;
     return out;
 }
@@ -60,21 +60,22 @@ fn fragment(in: VertexOutput) -> @location(0) vec4f {
     for (var idx = 0u; idx < NUM_LIGHTS; idx = idx + 1u) {
         let light = lights[idx];
 
-        let attenuation = 1f - smoothstep(0f, light.distance, distance(in.world_coords, light.position));
-        // let attenuation = 1f;
+        let attenuation = max(1f - (distance(in.world_coords, light.position) / light.distance), 0f);
         let light_dir = normalize(light.position - in.world_coords);
         let view_dir = normalize(uniforms.camera_pos - in.world_coords);
 
         let diffuse_power = max(dot(normal, light_dir), 0.);
-        let a = light.ambient * attenuation;
-        let d = light.diffuse * diffuse_power * attenuation;
+        let a = light.ambient.rgb * attenuation;
+        let d = light.diffuse.rgb * diffuse_power * attenuation;
         // TODO: add specular materials
-        let s = light.specular * pow(max(dot(normal, normalize(light_dir + view_dir)), 0.), 1.) * attenuation;
+        let s = light.specular.rgb * pow(max(dot(normal, normalize(light_dir + view_dir)), 0.), 4.) * attenuation;
 
-        ret += a + d;
+        ret += d;
         if (diffuse_power > 0.) {
             ret += s;
         }
+
+        ret = max(ret, a);
     }
 
     return vec4f(ret * tex_color.rgb, tex_color.a);

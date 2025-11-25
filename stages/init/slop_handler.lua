@@ -10,7 +10,7 @@ function(slop)
         ECS.delete_entity(slop.entity)
     else
         slop.transform:translate_by(slop.slop.direction * Engine.delta() * slop_speed)
-        slop.transform:translate_by(vec3.new(0, Engine.delta() * -2, 0))
+        -- slop.transform:translate_by(vec3.new(0, Engine.delta() * -2, 0))
     end
 
 end, "render")

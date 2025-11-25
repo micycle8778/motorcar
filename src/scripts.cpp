@@ -472,13 +472,38 @@ ScriptManager::ScriptManager(Engine& engine) : engine(engine) {
     });
 
 
-    srand(time(0));
+    // seed once
+    static bool _random_seeded = ([](){
+        std::srand(static_cast<unsigned>(std::time(nullptr)));
+        return true;
+    })();
+
     sol::table random_namespace = lua["Random"].force();
-    random_namespace.set_function("randi", []() { return std::rand(); });
-    random_namespace.set_function("randf", []() { return (f32)std::rand() / (f32)RAND_MAX; });
-    random_namespace.set_function("randi_range", [](int min, int max) { return min + std::rand() % (max - min); });
-    random_namespace.set_function("randf_range", [](f32 min, f32 max) { return min + ((f32)std::rand() / (f32)RAND_MAX) * (max - min); });
-    random_namespace.set_function("pick_random", [](sol::table t) { return t[std::rand() % t.size() + 1]; });
+    random_namespace.set_function("randi", []() -> int {
+        return std::rand();
+    });
+    random_namespace.set_function("randf", []() -> f32 {
+        return static_cast<f32>(std::rand()) / static_cast<f32>(RAND_MAX);
+    });
+    random_namespace.set_function("randi_range", [](int a, int b) -> int {
+        if (a > b) std::swap(a, b);
+        // inclusive range [a, b]
+        if (a == b) return a;
+        int range = b - a + 1;
+        return a + (std::rand() % range);
+    });
+    random_namespace.set_function("randf_range", [](f32 a, f32 b) -> f32 {
+        if (a > b) std::swap(a, b);
+        if (a == b) return a;
+        f32 t = static_cast<f32>(std::rand()) / static_cast<f32>(RAND_MAX);
+        return a + t * (b - a);
+    });
+    random_namespace.set_function("pick_random", [](sol::table t) -> sol::object {
+        auto n = t.size();
+        if (n == 0) return sol::nil;
+        size_t idx = 1 + (std::rand() % n); // Lua is 1-based
+        return t[idx];
+    });
 
 
     lua.new_usertype<Event>("Event", sol::constructors<Event(std::string)>());

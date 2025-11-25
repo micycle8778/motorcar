@@ -127,15 +127,50 @@ function(player_camera)
     end
 end, "render")
 
+function cast_ray(origin, direction)
+    function cast_ray(origin, direction)
+        -- try physics first
+        local hit = Physics.cast_ray(origin, direction)
+        if hit then
+            local pos = hit.position
+            return pos
+        end
+
+        -- fallback: intersect ray with horizontal plane y = 0
+        local dy = direction.y
+        if math.abs(dy) < 1e-6 then
+            -- ray parallel to plane
+            if math.abs(origin.y) < 1e-6 then
+                return origin -- already on the plane
+            end
+        end
+
+        local t = -origin.y / dy
+        if t < 0 then return nil end -- intersection is behind origin
+        return origin + direction * t
+    end
+end
+
 --Gun fire logic
-ECS.register_system({"gun", "global_transform", "food_type"} ,
-function(gun)
+ECS.register_system({
+    {"gun", "global_transform", "food_type"},
+    { "camera", "global_transform" }
+},
+function(gun, cam)
     if(Input.is_key_pressed_this_frame("m1")) then
+        local gt = gun.global_transform
+        local cam_gt = cam.global_transform
+
+        local result = cast_ray(cam_gt:position(), cam_gt:forward()) - gt:position()
+        if result == nil then return end
+
         local food = ECS.new_entity()
         ECS.insert_component(food, "gltf", "slop.glb")
         ECS.insert_component(food, "transform", Transform.new()
-        :with_position(gun.global_transform:position() + (2 *gun.global_transform:backward())))
+        :with_position(gt:position() + (2 * gt:backward())))
         ECS.insert_component(food, "type", gun.food_type)
-        ECS.insert_component(food, "slop", {direction = gun.global_transform:backward()})
+        ECS.insert_component(food, "slop", {
+            direction = (result):normalized()
+        })
     end
 end, "render")

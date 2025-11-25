@@ -50,6 +50,15 @@ namespace motorcar {
 
             return ret;
         }
+        // Set rotation from Euler angles (radians)
+        Transform with_rotation_euler(vec3 euler) const {
+            Transform ret;
+            ret.position = position;
+            ret.rotation = glm::quat(euler);
+            ret.scale = scale;
+            return ret;
+        }
+
         constexpr Transform with_scale(vec3 scale) const {
             Transform ret;
             ret.position = position;
@@ -79,6 +88,17 @@ namespace motorcar {
             Transform ret;
             ret.position = position;
             ret.rotation = rotation * this->rotation;
+            ret.scale = scale;
+
+            return ret;
+        }
+        // Rotate by an Euler vector (radians). Construct a quaternion from the euler angles
+        // and apply it (pre-multiplied) to the existing rotation.
+        Transform rotated_euler(vec3 euler) const {
+            Transform ret;
+            ret.position = position;
+            quat q = glm::quat(euler);
+            ret.rotation = q * this->rotation;
             ret.scale = scale;
 
             return ret;
@@ -124,6 +144,19 @@ namespace motorcar {
         }
         void rotate_by(vec3 axis, f32 rads) {
             *this = rotated(axis, rads);
+        }
+        // Mutating Euler-based rotation (radians)
+        void rotate_by_euler(vec3 euler) {
+            *this = rotated_euler(euler);
+        }
+        // Set rotation directly from Euler angles (radians)
+        void set_rotation_euler(vec3 euler) {
+            rotation = glm::quat(euler);
+        }
+
+        // Read back Euler angles (radians)
+        vec3 euler_angles() const {
+            return glm::eulerAngles(rotation);
         }
     };
     COMPONENT_TYPE_TRAIT(Transform, "transform");

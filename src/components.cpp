@@ -25,18 +25,23 @@ void motorcar::register_components_to_lua(sol::state& state) {
 
     transform["with_position"] = &Transform::with_position;
     transform["with_rotation"] = &Transform::with_rotation;
+    transform["with_rotation_euler"] = &Transform::with_rotation_euler;
     transform["with_scale"] = &Transform::with_scale;
 
     transform["translated"] = &Transform::translated;
     transform["scaled"] = &Transform::scaled;
     transform["rotated_quat"] = &Transform::rotated_quat;
     transform["rotated"] = &Transform::rotated;
+    transform["rotated_euler"] = &Transform::rotated_euler;
 
     transform["look_at"] = &Transform::look_at;
     transform["translate_by"] = &Transform::translate_by;
     transform["scale_by"] = &Transform::scale_by;
     transform["rotate_by_quat"] = &Transform::rotate_by_quat;
     transform["rotate_by"] = &Transform::rotate_by;
+    transform["rotate_by_euler"] = &Transform::rotate_by_euler;
+    transform["set_rotation_euler"] = &Transform::set_rotation_euler;
+    transform["euler_angles"] = &Transform::euler_angles;
 
     state.new_usertype<Velocity>("Velocity",
         sol::constructors<Velocity(vec3)>(),

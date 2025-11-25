@@ -161,7 +161,7 @@ function(gun, cam)
         local gt = gun.global_transform
         local cam_gt = cam.global_transform
 
-        local result = cast_ray(cam_gt:position(), cam_gt:forward()) - gt:position()
+        local result = cast_ray(cam_gt:position(), cam_gt:forward())
         if result == nil then return end
 
         local food = ECS.new_entity()
@@ -170,7 +170,7 @@ function(gun, cam)
         :with_position(gt:position() + (2 * gt:backward())))
         ECS.insert_component(food, "type", gun.food_type)
         ECS.insert_component(food, "slop", {
-            direction = (result):normalized()
+            direction = (result - gt:position()):normalized()
         })
         ECS.insert_component(food, "body", Body.new(AABB.new(vec3.new(0., 0., 0.), vec3.new(0.5,0.5,0.5))))
         ECS.insert_component(food, "trigger_body", {})

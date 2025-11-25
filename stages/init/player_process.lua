@@ -116,7 +116,7 @@ function(player_camera)
             local gun = ECS.new_entity()
             ECS.insert_component(gun, "gltf", "launcher.glb")
             ECS.insert_component(gun, "transform", Transform.new()
-            :with_position(vec3.new(1., 0., 0.))
+            :with_position(vec3.new(1., -.5, 0.))
             :rotated(vec3.new(0, 1, 0), 3.14))
             ECS.insert_component(gun, "parent", player_camera.entity)
             ECS.insert_component(gun, "gun", {})
@@ -130,7 +130,6 @@ end, "render")
 --Gun fire logic
 ECS.register_system({"gun", "global_transform", "food_type"} ,
 function(gun)
-
     if(Input.is_key_pressed_this_frame("m1")) then
         local food = ECS.new_entity()
         ECS.insert_component(food, "gltf", "slop.glb")

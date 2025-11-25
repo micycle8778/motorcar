@@ -6,11 +6,14 @@
 #include <filesystem>
 #include <fstream>
 #include <string_view>
+#include <thread>
+#include <chrono>
 
 #ifdef __linux__
 #include <sys/inotify.h>
 #include <unistd.h>
 #elif _WIN32
+#include <windows.h>
 #endif
 
 #include "spdlog/spdlog.h"
@@ -104,6 +107,45 @@ void ResourceManager::watch_file(std::filesystem::path file_path, std::function<
             inotify_add_watch(fd, file_path.c_str(), IN_MODIFY);
         }
 #elif _WIN32
+        try {
+            // Start by noting the last write time. If the file doesn't exist yet,
+            // last_write_time will throw; swallow that and retry until it exists.
+            std::error_code ec;
+            auto last_write = std::filesystem::last_write_time(file_path, ec);
+            if (ec) {
+                // file may not exist yet - keep looping until it does
+                while (true) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                    last_write = std::filesystem::last_write_time(file_path, ec);
+                    if (!ec) break;
+                }
+            }
+
+            while (true) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+                std::error_code ec2;
+                auto now_write = std::filesystem::last_write_time(file_path, ec2);
+                if (ec2) {
+                    // if the file was removed or is otherwise unreadable, just wait
+                    continue;
+                }
+
+                if (now_write != last_write) {
+                    last_write = now_write;
+                    try {
+                        callback();
+                    } catch (const std::exception& e) {
+                        SPDLOG_ERROR("watch_file callback threw exception: {}", e.what());
+                    } catch (...) {
+                        SPDLOG_ERROR("watch_file callback threw unknown exception");
+                    }
+                }
+            }
+        } catch (const std::filesystem::filesystem_error& e) {
+            SPDLOG_ERROR("watch_file failed: {}", e.what());
+            return;
+        }
 #else
     #warning "No hot reload handling!"
 #endif

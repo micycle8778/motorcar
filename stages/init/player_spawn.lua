@@ -4,6 +4,7 @@ ECS.insert_component(camera_holder, "transform", Transform.new())
 ECS.insert_component(camera_holder, "body", Body.new(AABB.new(vec3.new(0, .5, 0), vec3.new(1))))
 ECS.insert_component(camera_holder, "player", {})
 ECS.insert_component(camera_holder, "kinematic_body", {})
+ECS.insert_component(camera_holder, "holding", "")
 
 local camera = ECS.new_entity()
 ECS.insert_component(camera, "camera", {})

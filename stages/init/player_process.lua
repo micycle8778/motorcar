@@ -168,7 +168,7 @@ function(gun, cam)
         ECS.insert_component(food, "gltf", "slop.glb")
         ECS.insert_component(food, "transform", Transform.new()
         :with_position(gt:position() + (2 * gt:backward())))
-        ECS.insert_component(food, "type", gun.food_type)
+        ECS.insert_component(food, "food_type", gun.food_type)
         ECS.insert_component(food, "slop", {
             direction = (result - gt:position()):normalized()
         })
@@ -176,3 +176,26 @@ function(gun, cam)
         ECS.insert_component(food, "trigger_body", {})
     end
 end, "render")
+
+
+--Food grabbing logic
+ECS.register_system({"camera", "global_transform"}, 
+function(cam)
+    if(Input.is_key_pressed_this_frame("e")) then
+        local cam_gt = cam.global_transform
+        local dir = cast_ray(cam_gt:position(), cam_gt:forward())
+        if dir == nil then return end
+        
+        local test_box = ECS.new_entity()
+        ECS.insert_component(test_box, "test_box", {direction = (dir - cam_gt:position()):normalized()})
+        ECS.insert_component(test_box, "transform", Transform.new()
+        :with_position(cam_gt:position()))
+        ECS.insert_component(test_box, "body", Body.new(AABB.new(vec3.new(0., 0., 0.), vec3.new(0.25,0.25,0.25))))
+        ECS.insert_component(test_box, "trigger_body", {})
+        
+    end
+end, "render")
+
+--Food dropping logic
+
+--Cooking logic

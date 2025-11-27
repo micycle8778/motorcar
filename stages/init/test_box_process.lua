@@ -17,8 +17,8 @@ function(food, test_box, player)
         if ECS.get_component(e, "test_box") ~= nil then
             Log.debug(food.food_type)
             ECS.delete_entity(test_box.entity)
-            player.holding = food.food_type
-            Log.debug("The player is now holding:" .. player.holding)
+            player.holding.food_item = food.food_type
+            Log.debug("The player is now holding:" .. player.holding.food_item)
         end
     end
 end)
@@ -32,15 +32,15 @@ ECS.register_system({
 function(appliance, test_box, player)
     for idx, e in pairs(appliance.colliding_with.entities) do
         if ECS.get_component(e, "test_box") ~= nil then
-            Log.debug(appliance.appliance_type)
-            Log.debug(player.holding)
+            --Log.debug(appliance.appliance_type)
+            --Log.debug(player.holding.food_item)
             ECS.delete_entity(test_box.entity)
-            if(player.holding ~= "") then
-                Log.debug("Player is now holding: " .. player.holding)
-                appliance.holding = player.holding
-                player.holding = ""
-                Log.debug("Appliance is now holding: " .. appliane.holding)
-                Log.debug("Player is now holding: " .. player.holding)
+            if(player.holding.food_item ~= "") then
+                Log.debug("Player is now holding: " .. player.holding.food_item)
+                appliance.holding.food_item = player.holding.food_item
+                player.holding.food_item = ""
+                Log.debug("Appliance is now holding: " .. appliance.holding.food_item)
+                Log.debug("Player is now holding: " .. player.holding.food_item)
             end
         end
     end

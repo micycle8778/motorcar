@@ -30,6 +30,31 @@ for _, obj in ipairs(gltf.objects) do
     end
 end
 
+function spawn_food(model_name, pos_z) 
+    local x = ECS.new_entity()
+    ECS.insert_component(x, "gltf", model_name)
+    ECS.insert_component(x, "transform", Transform.new()
+        :with_position(vec3.new(0., 1.5, pos_z))
+    )
+end
+
+local models = {
+    "sausage_raw.glb",
+    "sausage_cooked.glb",
+    "tomato.glb",
+    "tomato_squashed.glb",
+    "hotdog.glb",
+    "hotdog_bun.glb",
+    "potato.glb",
+    "potato_squashed.glb",
+    "mashed_potatoes.glb",
+    "chili.glb"
+}
+
+for idx, name in ipairs(models) do
+    spawn_food(name, ((#models / -2) + idx) * 1.5)
+end
+
 -- local launcher = ECS.new_entity()
 -- ECS.insert_component(launcher, "gltf", "launcher.glb")
 -- ECS.insert_component(launcher, "transform", 

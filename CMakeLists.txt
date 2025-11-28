@@ -137,18 +137,26 @@ FetchContent_MakeAvailable( sol2 )
 
 # assimp
 set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_TESTS        OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ZLIB         ON  CACHE BOOL "" FORCE)
+
+# Disable everything by default
+set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF CACHE BOOL "" FORCE)
+
+# Enable ONLY glTF
+set(ASSIMP_BUILD_GLTF_IMPORTER ON CACHE BOOL "" FORCE)
+
+# Tools OFF (prevents building extra converters)
+set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+
 FetchContent_Declare(
     assimp
     GIT_REPOSITORY https://github.com/assimp/assimp.git
     GIT_TAG        fb375dd8c0a032106a2122815fb18dffe0283721
 )
+
 FetchContent_MakeAvailable(assimp)
-set(ASSIMP_BUILD_TESTS        OFF CACHE INTERNAL "")
-set(ASSIMP_BUILD_ZLIB         ON CACHE INTERNAL "")
-set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE INTERNAL "")
-set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF CACHE INTERNAL "")
-set(ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT OFF CACHE INTERNAL "")
-set(ASSIMP_BUILD_GLTF_IMPORTER ON CACHE INTERNAL "")
 
 ## Declare the engine library
 add_library( motorcar STATIC

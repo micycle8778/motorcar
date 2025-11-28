@@ -1,9 +1,9 @@
 build-debug:
-    cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -B out/Debug
+    cmake -DCMAKE_BUILD_TYPE=Debug -B out/Debug
     cmake --build out/Debug
 
 build-release:
-    cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -B out/Release
+    cmake -DCMAKE_BUILD_TYPE=Release -B out/Release
     cmake --build out/Release
 
 run-debug: build-debug

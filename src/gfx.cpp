@@ -379,13 +379,13 @@ namespace {
         std::vector<MeshBundle> mesh_bundles;
         std::vector<SceneObject> objects;
 
-        void process_node(const aiScene* scene, const aiNode* node) {
+        void process_node(const aiScene* scene, const aiNode* node, mat4 parent_matrix) {
             SPDLOG_TRACE("found gltf scene object {}", node->mName.C_Str());
+            mat4 matrix = parent_matrix * to_glm(node->mTransformation);
             if (node->mNumMeshes != 0) {
                 if (node->mNumMeshes > 1) {
                     SPDLOG_ERROR("scene object {} has more than one mesh. it will not be imported correctly.");
                 }
-                mat4 matrix = to_glm(node->mTransformation);
 
                 AABB aabb = mesh_bundles[*node->mMeshes].aabb;
                 aabb.center = matrix * vec4(aabb.center, 1);
@@ -400,7 +400,7 @@ namespace {
             } 
 
             for (u32 idx = 0; idx < node->mNumChildren; idx++) {
-                process_node(scene, node->mChildren[idx]);
+                process_node(scene, node->mChildren[idx], matrix);
             }
         }
 
@@ -499,7 +499,7 @@ namespace {
             }
 
             // go through every object in the scene and add it to the object list
-            process_node(scene, scene->mRootNode);
+            process_node(scene, scene->mRootNode, mat4{1});
             SPDLOG_TRACE("objects acquired: {}", objects.size());
         }
 

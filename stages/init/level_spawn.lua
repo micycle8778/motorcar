@@ -48,7 +48,10 @@ local models = {
     "potato.glb",
     "potato_squashed.glb",
     "mashed_potatoes.glb",
-    "chili.glb"
+    "chili.glb",
+    "frying_pan.glb",
+    "mixing_bowl.glb",
+    "pot.glb"
 }
 
 for idx, name in ipairs(models) do

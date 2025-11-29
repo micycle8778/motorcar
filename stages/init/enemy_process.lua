@@ -30,7 +30,12 @@ end)
 ECS.register_system({ "enemy", "colliding_with", "entity" }, function(enemy)
     for idx, e in pairs(enemy.colliding_with.entities) do
         if ECS.get_component(e, "slop") ~= nil then
-            ECS.delete_entity(enemy.entity)
+            if(enemy.enemy.wants == ECS.get_component(e, "food_type")) then
+                Log.debug("Enemy wants: " .. enemy.enemy.wants)
+                Log.debug("Food fired: " .. ECS.get_component(e, "food_type"))
+                ECS.delete_entity(enemy.entity)
+            end
+            
         end
     end
 end)

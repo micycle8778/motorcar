@@ -105,14 +105,15 @@ end, "render")
 -- end, "render")
 
 --Gun spawn logic
-ECS.register_system({"entity", "camera"},
-function(player_camera)
+ECS.register_system({{"entity", "camera"}, {"player", "holding"}},
+function(player_camera, player)
     if Input.is_key_pressed_this_frame("r") then
 
         local e -- entity | nil
         ECS.for_each({"entity", "gun"}, function(x) e = x.entity end)
 
         if e == nil then
+            Log.debug("player was holding: " .. player.holding.food_item)
             local gun = ECS.new_entity()
             ECS.insert_component(gun, "gltf", "launcher.glb")
             ECS.insert_component(gun, "transform", Transform.new()
@@ -120,10 +121,12 @@ function(player_camera)
             :rotated(vec3.new(0, 1, 0), 3.14))
             ECS.insert_component(gun, "parent", player_camera.entity)
             ECS.insert_component(gun, "gun", {})
-            ECS.insert_component(gun, "food_type", "slop")
+            ECS.insert_component(gun, "food_type", player.holding.food_item)
+            player.holding.food_item = ""
         else
             ECS.delete_entity(e)
         end
+        Log.debug("player is holding: " .. player.holding.food_item)
     end
 end, "render")
 
@@ -165,7 +168,16 @@ function(gun, cam)
         if result == nil then return end
 
         local food = ECS.new_entity()
-        ECS.insert_component(food, "gltf", "slop.glb")
+        --Case: Chili
+        if(gun.food_type == "chili") then
+            ECS.insert_component(food, "gltf", "chili.glb")
+        elseif(gun.food_type == "hot_dog") then --Case: Hot dog
+            ECS.insert_component(food, "gltf", "hotdog.glb")
+        elseif(gun.food_type == "mashed_potatoes") then --Case: Mashed potatos
+            ECS.insert_component(food, "gltf", "mashed_potatoes.glb")
+        else --Case: trying to fire an improperly loaded gun
+            return
+        end
         ECS.insert_component(food, "transform", Transform.new()
         :with_position(gt:position() + (2 * gt:backward())))
         ECS.insert_component(food, "food_type", gun.food_type)
@@ -190,12 +202,17 @@ function(cam)
         ECS.insert_component(test_box, "test_box", {direction = (dir - cam_gt:position()):normalized()})
         ECS.insert_component(test_box, "transform", Transform.new()
         :with_position(cam_gt:position()))
+        ECS.insert_component(test_box, "timer", {time = 0.5})
         ECS.insert_component(test_box, "body", Body.new(AABB.new(vec3.new(0., 0., 0.), vec3.new(0.25,0.25,0.25))))
         ECS.insert_component(test_box, "trigger_body", {})
-        
     end
 end, "render")
 
 --Food dropping logic
-
---Cooking logic
+ECS.register_system({"player", "holding"}, 
+function(player)
+    if(Input.is_key_pressed_this_frame("space")) then
+        player.holding.food_item = ""
+        Log.debug("Player is now holding: " .. player.holding.food_item)
+    end 
+end, "render")

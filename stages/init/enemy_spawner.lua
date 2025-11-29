@@ -7,7 +7,7 @@ local food_to_color = {
 
 function spawn_enemy() 
     local enemy = ECS.new_entity()
-    Log.debug(type(foods))
+    --Log.debug(type(foods))
     local food = Random.pick_random(foods)
     ECS.insert_component(enemy, "gltf", "enemy.glb")
 

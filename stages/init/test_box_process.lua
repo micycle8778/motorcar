@@ -15,10 +15,19 @@ ECS.register_system({
 function(food, test_box, player)
     for idx, e in pairs(food.colliding_with.entities) do
         if ECS.get_component(e, "test_box") ~= nil then
-            Log.debug(food.food_type)
-            ECS.delete_entity(test_box.entity)
-            player.holding.food_item = food.food_type
-            Log.debug("The player is now holding:" .. player.holding.food_item)
+            --Special case: player is holding cooked sausage and trying to get a bun
+            if(player.holding.food_item == "cooked_sausage") then
+                ECS.delete_entity(test_box.entity)
+                player.holding.food_item = "hot_dog"
+                Log.debug("The player is now holding:" .. player.holding.food_item)
+            end
+            if(player.holding.food_item == "") then
+                Log.debug(food.food_type)
+                ECS.delete_entity(test_box.entity)
+                player.holding.food_item = food.food_type
+                Log.debug("The player is now holding:" .. player.holding.food_item)
+            end
+            
         end
     end
 end)

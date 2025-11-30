@@ -5,7 +5,13 @@ local food_to_color = {
     hot_dog = vec3.new(0., 0., 1.)
 }
 
+local MAX_ENEMIES = 30
 function spawn_enemy() 
+    -- enforce MAX_ENEMIES
+    local enemy_count = 0
+    ECS.for_each({ "enemy" }, function() enemy_count = enemy_count + 1 end)
+    if enemy_count >= MAX_ENEMIES then return end
+
     local enemy = ECS.new_entity()
     --Log.debug(type(foods))
     local food = Random.pick_random(foods)

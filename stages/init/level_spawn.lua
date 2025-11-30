@@ -38,25 +38,25 @@ function spawn_food(model_name, pos_z)
     )
 end
 
-local models = {
-    "sausage_raw.glb",
-    "sausage_cooked.glb",
-    "tomato.glb",
-    "tomato_squashed.glb",
-    "hotdog.glb",
-    "hotdog_bun.glb",
-    "potato.glb",
-    "potato_squashed.glb",
-    "mashed_potatoes.glb",
-    "chili.glb",
-    "frying_pan.glb",
-    "mixing_bowl.glb",
-    "pot.glb"
-}
-
-for idx, name in ipairs(models) do
-    spawn_food(name, ((#models / -2) + idx) * 1.5)
-end
+-- local models = {
+--     "sausage_raw.glb",
+--     "sausage_cooked.glb",
+--     "tomato.glb",
+--     "tomato_squashed.glb",
+--     "hotdog.glb",
+--     "hotdog_bun.glb",
+--     "potato.glb",
+--     "potato_squashed.glb",
+--     "mashed_potatoes.glb",
+--     "chili.glb",
+--     "frying_pan.glb",
+--     "mixing_bowl.glb",
+--     "pot.glb"
+-- }
+--
+-- for idx, name in ipairs(models) do
+--     spawn_food(name, ((#models / -2) + idx) * 1.5)
+-- end
 
 -- local launcher = ECS.new_entity()
 -- ECS.insert_component(launcher, "gltf", "launcher.glb")

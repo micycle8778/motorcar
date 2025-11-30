@@ -185,8 +185,9 @@ PhysicsManager::PhysicsManager(Engine& engine) : engine(engine) {
     );
 
     sol::table physics_namespce = lua["Physics"].force();
-    physics_namespce.set_function("cast_ray", [&](vec3 origin, vec3 direction, Entity excluded) -> sol::object {
-            auto ret = cast_ray(origin, direction, excluded);
+    physics_namespce.set_function("cast_ray", [&](vec3 origin, vec3 direction, std::optional<Entity> excluded) -> sol::object {
+            Entity e = excluded.has_value() ? *excluded : -1;
+            auto ret = cast_ray(origin, direction, e);
 
             if (ret.has_value()) {
                 sol::table t = sol::table(lua, sol::create);

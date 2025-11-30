@@ -122,6 +122,8 @@ function(player_camera, player)
             ECS.insert_component(gun, "parent", player_camera.entity)
             ECS.insert_component(gun, "gun", {})
             ECS.insert_component(gun, "food_type", player.holding.food_item)
+
+            ECS.for_each({ "held_item", "entity" }, function(e) ECS.delete_entity(e.entity) end)
             player.holding.food_item = ""
         else
             ECS.delete_entity(e)
@@ -191,27 +193,28 @@ end, "render")
 
 
 --Food grabbing logic
-ECS.register_system({"camera", "global_transform"}, 
-function(cam)
-    if(Input.is_key_pressed_this_frame("e")) then
-        local cam_gt = cam.global_transform
-        local dir = cast_ray(cam_gt:position(), cam_gt:forward())
-        if dir == nil then return end
-        
-        local test_box = ECS.new_entity()
-        ECS.insert_component(test_box, "test_box", {direction = (dir - cam_gt:position()):normalized()})
-        ECS.insert_component(test_box, "transform", Transform.new()
-        :with_position(cam_gt:position()))
-        ECS.insert_component(test_box, "timer", {time = 0.5})
-        ECS.insert_component(test_box, "body", Body.new(AABB.new(vec3.new(0., 0., 0.), vec3.new(0.25,0.25,0.25))))
-        ECS.insert_component(test_box, "trigger_body", {})
-    end
-end, "render")
+-- ECS.register_system({"camera", "global_transform"}, 
+-- function(cam)
+--     if(Input.is_key_pressed_this_frame("e")) then
+--         local cam_gt = cam.global_transform
+--         local dir = cast_ray(cam_gt:position(), cam_gt:forward())
+--         if dir == nil then return end
+--         
+--         local test_box = ECS.new_entity()
+--         ECS.insert_component(test_box, "test_box", {direction = (dir - cam_gt:position()):normalized()})
+--         ECS.insert_component(test_box, "transform", Transform.new()
+--         :with_position(cam_gt:position()))
+--         ECS.insert_component(test_box, "timer", {time = 0.5})
+--         ECS.insert_component(test_box, "body", Body.new(AABB.new(vec3.new(0., 0., 0.), vec3.new(0.25,0.25,0.25))))
+--         ECS.insert_component(test_box, "trigger_body", {})
+--     end
+-- end, "render")
 
 --Food dropping logic
 ECS.register_system({"player", "holding"}, 
 function(player)
     if(Input.is_key_pressed_this_frame("space")) then
+        ECS.for_each({ "held_item", "entity" }, function(e) ECS.delete_entity(e.entity) end)
         player.holding.food_item = ""
         Log.debug("Player is now holding: " .. player.holding.food_item)
     end 

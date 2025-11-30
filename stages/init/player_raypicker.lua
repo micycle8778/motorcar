@@ -124,16 +124,108 @@ function(player, camera)
         if appliance ~= "" then
             local new_state = cooking_lut[appliance][("%s:%s"):format(holding.food_item, player.holding.food_item)]
 
+            local app_pos = ECS.get_component(result.entity, "global_transform"):position()
             if new_state == nil then
-                Log.error("TODO: bad sfx/vfx")
+                -- dark smoke
+                spawn_particles(
+                    20, .65, app_pos, -- count + pos
+                    vec3.new(.0), vec3.new(.25), -- color
+                    .5, .5, -- lifetime
+                    2., 6, -- speed
+                    .125, .25 -- scale
+                )
+
+                -- fire
+                spawn_particles(
+                    10, .65, app_pos, -- count + pos
+                    vec3.new(.65, 0, 0), vec3.new(.8, .55, .1), -- color
+                    .6, .4, -- lifetime
+                    2., 6, -- speed
+                    .25, .35 -- scale
+                )
             else
-                Log.debug("TODO: happy sfx/vfx")
+                -- light smoke
+                spawn_particles(
+                    30, .65, app_pos, -- count + pos
+                    vec3.new(.35), vec3.new(1.), -- color
+                    .5, .5, -- lifetime
+                    2., 6, -- speed
+                    .125, .25 -- scale
+                )
             end
 
             holding.food_item = new_state or ""
 
             ECS.for_each({ "held_item", "entity" }, function(e) ECS.delete_entity(e.entity) end)
             player.holding.food_item = ""
+        end
+    end
+end, "render")
+
+
+-- particle system: spawn short-lived colored spheres that rise then shrink and are deleted
+ECS.register_component("particle")
+
+-- spawn_particles(..., scale_min, scale_max)
+-- scale_min/scale_max: optional range for initial particle scale; if omitted, preserves previous random defaults
+function spawn_particles(count, radius, center, color1, color2, hold_time, shrink_time, rise_speed_min, rise_speed_max, scale_min, scale_max)
+    for i=1,count do
+        local e = ECS.new_entity()
+
+        -- random point in disc (uniform)
+        local theta = math.random() * 2 * math.pi
+        local r = radius * math.sqrt(math.random())
+        local x = center.x + r * math.cos(theta)
+        local z = center.z + r * math.sin(theta)
+        local y = center.y
+
+        -- initial scale and rise speed per-particle
+    -- determine initial scale (allow caller to provide a range)
+    local smin = scale_min or 0.05
+    local smax = scale_max or (smin + 0.08)
+    local init_scale = smin + math.random() * (smax - smin)
+        local rise_speed = rise_speed_min + math.random() * (rise_speed_max - rise_speed_min)
+
+        -- pick a color along gradient between color1 and color2
+        local t = math.random()
+        local col = vec3.new(
+            color1.x * (1 - t) + color2.x * t,
+            color1.y * (1 - t) + color2.y * t,
+            color1.z * (1 - t) + color2.z * t
+        )
+
+        ECS.insert_component(e, "transform", Transform.new():with_position(vec3.new(x, y, z)):with_scale(vec3.new(init_scale)))
+        ECS.insert_component(e, "gltf", "sphere.glb")
+        ECS.insert_component(e, "albedo", col)
+        ECS.insert_component(e, "particle", { timer = 0., hold_time = hold_time or 0.3, shrink_time = shrink_time or 0.3, rise_speed = rise_speed, init_scale = init_scale })
+    end
+end
+
+ECS.register_system({ "particle", "transform", "entity" },
+function(p)
+    local dt = Engine.delta()
+    local part = p.particle
+
+    part.timer = part.timer + dt
+
+    if part.timer <= part.hold_time then
+        -- rising phase
+        p.transform:translate_by(vec3.new(0, dt * part.rise_speed, 0))
+    else
+        -- shrinking phase
+        local elapsed = part.timer - part.hold_time
+        local denom = math.max(1e-6, part.shrink_time)
+        local t = math.min(1, elapsed / denom)
+        local s = part.init_scale * (1 - t)
+
+        -- continue moving up a little while shrinking
+        p.transform:translate_by(vec3.new(0, dt * part.rise_speed, 0))
+
+        -- update scale (replace transform with scaled copy)
+        ECS.insert_component(p.entity, "transform", p.transform:with_scale(vec3.new(s)))
+
+        if t >= 1 then
+            ECS.delete_entity(p.entity)
         end
     end
 end, "render")

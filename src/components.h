@@ -1,5 +1,5 @@
 #pragma once
-#include "ecs.h"
+#include "traits.h"
 #include "types.h"
 #include <sol/forward.hpp>
 #include <sol/sol.hpp>
@@ -26,6 +26,7 @@
     } \
 
 namespace motorcar {
+    struct ECSWorld;
     struct Transform {
         vec3 position = vec3(0);
         quat rotation = quat(1, 0, 0, 0);
@@ -109,6 +110,29 @@ namespace motorcar {
             ret.rotation = glm::rotate(rotation, rads, axis);
             ret.scale = scale;
 
+            return ret;
+        }
+
+        // Convenience rotations around principal axes (radians)
+        Transform rotated_x(f32 rads) const {
+            Transform ret;
+            ret.position = position;
+            ret.rotation = glm::rotate(rotation, rads, vec3(1, 0, 0));
+            ret.scale = scale;
+            return ret;
+        }
+        Transform rotated_y(f32 rads) const {
+            Transform ret;
+            ret.position = position;
+            ret.rotation = glm::rotate(rotation, rads, vec3(0, 1, 0));
+            ret.scale = scale;
+            return ret;
+        }
+        Transform rotated_z(f32 rads) const {
+            Transform ret;
+            ret.position = position;
+            ret.rotation = glm::rotate(rotation, rads, vec3(0, 0, 1));
+            ret.scale = scale;
             return ret;
         }
 

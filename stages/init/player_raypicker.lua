@@ -45,26 +45,30 @@ local food_meshes = {
 }
 
 local food_transforms = {
-    buns = Transform.new():with_position(vec3.new(0, -.15, -2)):with_rotation_euler(vec3.new(0, 3.14 / 2, 0)),
-    raw_potato = Transform.new():with_position(vec3.new(0, .075, -2)),
-    raw_tomato = Transform.new():with_position(vec3.new(0, -.2, -1.5)),
-    raw_sausage = Transform.new():with_position(vec3.new(0, -.15, -2)):with_rotation_euler(vec3.new(0, 3.14 / 2, 0)),
+    buns = Transform.new():with_position(vec3.new(0, -.15, 0)):rotated_y(3.14 / 2):rotated_z(.5),
+    raw_potato = Transform.new():with_position(vec3.new(0, .075, 0)):rotated_z(.5),
+    raw_tomato = Transform.new():with_position(vec3.new(0, -.2, 0)):rotated_z(.5),
+    raw_sausage = Transform.new():with_position(vec3.new(0, -.15, 0)):rotated_y(3.14 / 2):rotated_z(.5),
 
-    raw_mashed_potato = Transform.new():with_position(vec3.new(0, -.2, -1.5)),
-    raw_mashed_tomato = Transform.new():with_position(vec3.new(0, -.2, -1.5)),
+    raw_mashed_potato = Transform.new():with_position(vec3.new(0, -.2, 0)):rotated_z(.5),
+    raw_mashed_tomato = Transform.new():with_position(vec3.new(0, -.2, 0)):rotated_z(.5),
 
-    cooked_sausage = Transform.new():with_position(vec3.new(0, -.15, -2)):with_rotation_euler(vec3.new(0, 3.14 / 2, 0)),
-    mashed_potatoes = Transform.new():with_position(vec3.new(0, -.2, -1.5)),
-    chili = Transform.new():with_position(vec3.new(0, -.2, -1.5)),
-    hot_dog = Transform.new():with_position(vec3.new(0, -.15, -2)):with_rotation_euler(vec3.new(0, 3.14 / 2, 0)),
+    cooked_sausage = Transform.new():with_position(vec3.new(0, -.15, 0)):rotated_y(3.14 / 2):rotated_z(.5),
+    mashed_potatoes = Transform.new():with_position(vec3.new(0, -.2, 0)):rotated_z(.5),
+    chili = Transform.new():with_position(vec3.new(0, -.2, 0)):rotated_z(.5),
+    hot_dog = Transform.new():with_position(vec3.new(0, -.15, 0)):rotated_y(3.14 / 2):rotated_z(.5),
 }
 
 function spawn_food_mesh(camera_entity, food)
+    local parent = ECS.new_entity()
+    ECS.insert_component(parent, "parent", camera_entity)
+    ECS.insert_component(parent, "held_item", food)
+    ECS.insert_component(parent, "transform", Transform.new():with_position(vec3.new(0, 0, -2)))
+    
     local mesh = ECS.new_entity()
-    ECS.insert_component(mesh, "parent", camera_entity)
+    ECS.insert_component(mesh, "parent", parent)
     ECS.insert_component(mesh, "gltf", food_meshes[food])
     ECS.insert_component(mesh, "transform", food_transforms[food])
-    ECS.insert_component(mesh, "held_item", food)
 end
 
 function pickup_ingredient(player, camera, r)
@@ -229,3 +233,8 @@ function(p)
         end
     end
 end, "render")
+
+ECS.register_component("held_item")
+ECS.register_system({ "held_item", "transform", "global_transform" }, function(item)
+    item.transform:rotate_by(vec3.new(0, 1, 0), Engine.delta())
+end)

@@ -19,6 +19,8 @@
 #include "spdlog/spdlog.h"
 
 #include "types.h"
+#include "traits.h"
+#include "components.h"
 
 #define MOTORCAR_EAT_EXCEPTION(code, msg) try { code; } catch (const std::exception& e) { SPDLOG_ERROR(msg, " what(): {}", e.what()); } catch (...) { SPDLOG_ERROR(msg); }
 namespace motorcar {
@@ -26,12 +28,6 @@ namespace motorcar {
 
     template <typename ...Components>
     class Query;
-
-    template <typename T>
-    struct ComponentTypeTrait {
-        constexpr static bool value = false;
-        constexpr static std::string_view component_name = "";
-    };
 
     class ComponentStorage {
         template <typename ...T>
@@ -406,22 +402,7 @@ namespace motorcar {
                 });
             }
 
-            void delete_entity(Entity e) {
-                ECSWorld* self = this;
-                command_queue.push_command([=]() {
-                    for (auto& [_, s] : self->native_storage) {
-                        s.remove_component(e);
-                    }
-
-                    self->lua_storage.for_each([&](sol::object, sol::object components) {
-                        if (components.is<sol::table>()) {
-                            components.as<sol::table>()[e] = sol::nil;
-                        } else {
-                            SPDLOG_WARN("non-table found in lua_storage. this is an engine bug.");
-                        }
-                    });
-                });
-            }
+            void delete_entity(Entity e);
 
             void flush_command_queue() {
                 while (command_queue.has_command()) {

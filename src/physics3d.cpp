@@ -16,6 +16,7 @@
 #include "types.h"
 #include "physics3d.h"
 #include "engine.h"
+#include "ecs.h"
 
 using namespace motorcar;
 

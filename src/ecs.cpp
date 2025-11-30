@@ -106,3 +106,24 @@ void ECSWorld::fire_event(std::string event_name, sol::object event_payload) {
         }
     }
 }
+
+void ECSWorld::delete_entity(Entity e) {
+    ECSWorld* self = this;
+
+    for (auto [entity, parent] : this->query<Entity, Parent>())
+        if (parent->parent == e) delete_entity(entity);
+
+    command_queue.push_command([=]() {
+        for (auto& [_, s] : self->native_storage) {
+            s.remove_component(e);
+        }
+
+        self->lua_storage.for_each([&](sol::object, sol::object components) {
+            if (components.is<sol::table>()) {
+                components.as<sol::table>()[e] = sol::nil;
+            } else {
+                SPDLOG_WARN("non-table found in lua_storage. this is an engine bug.");
+            }
+        });
+    });
+}

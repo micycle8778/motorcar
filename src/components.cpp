@@ -33,6 +33,9 @@ void motorcar::register_components_to_lua(sol::state& state) {
     transform["rotated_quat"] = &Transform::rotated_quat;
     transform["rotated"] = &Transform::rotated;
     transform["rotated_euler"] = &Transform::rotated_euler;
+    transform["rotated_x"] = &Transform::rotated_x;
+    transform["rotated_y"] = &Transform::rotated_y;
+    transform["rotated_z"] = &Transform::rotated_z;
 
     transform["look_at"] = &Transform::look_at;
     transform["translate_by"] = &Transform::translate_by;

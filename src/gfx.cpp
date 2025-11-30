@@ -29,6 +29,7 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
+#include "ecs.h"
 #include "gfx.h"
 #include "resources.h"
 #include "engine.h"

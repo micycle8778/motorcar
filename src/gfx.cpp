@@ -146,7 +146,9 @@ namespace {
     struct Uniforms3D {
         mat4 view_projection;
         vec3 camera_pos;
-        f32 _padding;
+        u32 shaded;
+        u32 should_srgb;
+        u32 _padding[3];
     };
 
     constexpr u32 NUM_LIGHTS = 8;
@@ -164,24 +166,10 @@ namespace {
         WGPUSurfaceCapabilities capabilities{};
         wgpuSurfaceGetCapabilities( surface, adapter, &capabilities );
 
-        WGPUTextureFormat preferred_formats[] = {
-            WGPUTextureFormat_BGRA8Unorm,
-            WGPUTextureFormat_RGBA8Unorm,
-            WGPUTextureFormat_BGRA8UnormSrgb,
-            WGPUTextureFormat_RGBA8UnormSrgb,
-        };
-
         WGPUTextureFormat result = capabilities.formats[0];
-        for (int idx = 0; idx < capabilities.formatCount; idx++) {
-            for (int pdx = 0; pdx < sizeof(preferred_formats) / sizeof(preferred_formats[0]); pdx++) {
-                if (preferred_formats[pdx] == capabilities.formats[idx]) {
-                    result = preferred_formats[pdx];
-                    srgb = pdx >= 2;
-                    goto end_loop;
-                }
-            }
-        }
-        end_loop: {}
+
+        srgb = result == WGPUTextureFormat_RGBA8UnormSrgb;
+        srgb |= result == WGPUTextureFormat_BGRA8UnormSrgb;
 
         wgpuSurfaceCapabilitiesFreeMembers( capabilities );
         return result;
@@ -1603,6 +1591,8 @@ void GraphicsManager::draw_3d(WGPUTextureView surface_texture_view, WGPUTextureV
     Uniforms3D uniforms{};
     uniforms.view_projection = projection_matrix * view_matrix;
     uniforms.camera_pos = camera_pos;
+    uniforms.shaded = true;
+    uniforms.should_srgb = !srgb;
     wgpuQueueWriteBuffer(webgpu->queue, webgpu->uniforms_buffer_3d, 0, &uniforms, sizeof(Uniforms3D));
 
     write_to_light_buffer(*webgpu, engine);
@@ -1843,6 +1833,8 @@ void GraphicsManager::draw_sprite_3d(WGPUTextureView surface_texture_view, WGPUT
     Uniforms3D uniforms{};
     uniforms.view_projection = projection_matrix * view_matrix;
     uniforms.camera_pos = camera_pos;
+    uniforms.shaded = false;
+    uniforms.should_srgb = !srgb;
     wgpuQueueWriteBuffer(webgpu->queue, webgpu->uniforms_buffer_3d, 0, &uniforms, sizeof(Uniforms3D));
 
     write_to_light_buffer(*webgpu, engine);

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="163.23001mm"
+   height="190.88747mm"
+   viewBox="0 0 163.23001 190.88747"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4.2 (ebf0e940d0, 2025-05-08)"
+   sodipodi:docname="thought_bubble.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#505050"
+     bordercolor="#ffffff"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="1"
+     inkscape:deskcolor="#505050"
+     inkscape:document-units="mm"
+     inkscape:zoom="0.70710678"
+     inkscape:cx="289.91378"
+     inkscape:cy="464.56916"
+     inkscape:window-width="1874"
+     inkscape:window-height="986"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-27.855396,-5.0151792)">
+    <path
+       id="path1"
+       style="fill:#ffffff;stroke:#000000;stroke-width:3.44026"
+       d="M 107.95009,6.7353092 A 39.133041,39.133041 0 0 0 79.480505,19.019314 39.133041,39.133041 0 0 0 72.02928,18.303079 39.133041,39.133041 0 0 0 32.896268,57.436091 a 39.133041,39.133041 0 0 0 13.196094,29.303121 39.133041,39.133041 0 0 0 -1.970939,12.2623 39.133041,39.133041 0 0 0 39.133012,39.133018 39.133041,39.133041 0 0 0 23.321575,-7.70858 39.133041,39.133041 0 0 0 32.05645,16.68891 39.133041,39.133041 0 0 0 39.13352,-39.13302 39.133041,39.133041 0 0 0 -3.40444,-15.963881 39.133041,39.133041 0 0 0 15.00374,-30.808455 39.133041,39.133041 0 0 0 -39.13302,-39.133012 39.133041,39.133041 0 0 0 -10.21798,1.35754 39.133041,39.133041 0 0 0 -32.06419,-16.6987228 z" />
+    <circle
+       style="fill:#ffffff;stroke:#000000;stroke-width:2.74;stroke-dasharray:none"
+       id="path4"
+       cx="74.461288"
+       cy="162.01877"
+       r="17.586336" />
+    <circle
+       style="fill:#ffffff;stroke:#000000;stroke-width:2.74;stroke-dasharray:none"
+       id="circle4"
+       cx="41.907864"
+       cy="181.85017"
+       r="12.682467" />
+  </g>
+</svg>

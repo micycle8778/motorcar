@@ -1,6 +1,8 @@
 struct Uniforms {
     view_projection: mat4x4f,
     camera_pos: vec3f,
+    shaded: u32,
+    should_srgb: u32,
 };
 
 struct LightData {
@@ -18,7 +20,7 @@ struct InstanceData {
     albedo: vec4f
 };
 
-const NUM_LIGHTS: u32 = 8;
+const NUM_LIGHTS: u32 = 8u;
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var texSampler: sampler;
@@ -56,28 +58,37 @@ fn fragment(in: VertexOutput) -> @location(0) vec4f {
     var tex_color = textureSample(texData, texSampler, in.texcoords).rgba * instance_data.albedo;
     if (tex_color.a < 0.1) { discard; }
 
-    var ret = vec3f(.05);
-    for (var idx = 0u; idx < NUM_LIGHTS; idx = idx + 1u) {
-        let light = lights[idx];
+    var ret: vec3f;
+    if (uniforms.shaded == 1u) {
+        ret = vec3f(.05);
+        for (var idx = 0u; idx < NUM_LIGHTS; idx = idx + 1u) {
+            let light = lights[idx];
 
-        let attenuation = max(1f - (distance(in.world_coords, light.position) / light.distance), 0f);
-        let light_dir = normalize(light.position - in.world_coords);
-        let view_dir = normalize(uniforms.camera_pos - in.world_coords);
+            let attenuation = max(1f - (distance(in.world_coords, light.position) / light.distance), 0f);
+            let light_dir = normalize(light.position - in.world_coords);
+            let view_dir = normalize(uniforms.camera_pos - in.world_coords);
 
-        let diffuse_power = max(dot(normal, light_dir), 0.);
-        let a = light.ambient.rgb * attenuation;
-        let d = light.diffuse.rgb * diffuse_power * attenuation;
-        // TODO: add specular materials
-        let s = light.specular.rgb * pow(max(dot(normal, normalize(light_dir + view_dir)), 0.), 4.) * attenuation;
+            let diffuse_power = max(dot(normal, light_dir), 0.);
+            let a = light.ambient.rgb * attenuation;
+            let d = light.diffuse.rgb * diffuse_power * attenuation;
+            // TODO: add specular materials
+            let s = light.specular.rgb * pow(max(dot(normal, normalize(light_dir + view_dir)), 0.), 4.) * attenuation;
 
-        ret += d;
-        if (diffuse_power > 0.) {
-            ret += s;
+            ret += d;
+            if (diffuse_power > 0.) {
+                ret += s;
+            }
+
+            ret = max(ret, a);
         }
-
-        ret = max(ret, a);
+        ret *= tex_color.rgb;
+    } else {
+        ret = tex_color.rgb;
     }
 
-    // return vec4f(ret * tex_color.rgb, tex_color.a);
-    return vec4f(pow(ret * tex_color.rgb, vec3f(1. / 2.2)), tex_color.a);
+    if (uniforms.should_srgb == 1u) {
+        ret = pow(ret, vec3f(1. / 2.2));
+    }
+
+    return vec4(ret, tex_color.a);
 }

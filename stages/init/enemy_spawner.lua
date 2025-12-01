@@ -1,9 +1,4 @@
 local foods = { "chili", "mashed_potatoes", "hot_dog" }
-local food_to_color = {
-    chili = vec3.new(1., 0., 0.),
-    mashed_potatoes = vec3.new(0., 1., 0),
-    hot_dog = vec3.new(0., 0., 1.)
-}
 
 local MAX_ENEMIES = 30
 function spawn_enemy() 
@@ -19,8 +14,15 @@ function spawn_enemy()
 
     ECS.insert_component(enemy, "body", Body.new(AABB.new(vec3.new(0., 2, 0.), vec3.new(1,2,1))))
     ECS.insert_component(enemy, "trigger_body", {})
-    ECS.insert_component(enemy, "albedo", food_to_color[food])
     ECS.insert_component(enemy, "enemy", { wants = food })
+
+    local sprite = ECS.new_entity()
+    ECS.insert_component(sprite, "sprite3d", ("want_%s.png"):format(food))
+    ECS.insert_component(sprite, "parent", enemy)
+    ECS.insert_component(sprite, "transform", Transform.new()
+        :with_position(vec3.new(1.5, 5, 0))
+        :with_scale(vec3.new(1.75))
+    )
 
     -- spawn enemies between x = -13 to x - 20 and z = 20 to z = -20
     local x_pos = Random.randf_range(-20, -13)

@@ -39,6 +39,7 @@ ECS.register_system({}, function()
     if timer <= 0. then
         spawn_enemy()
         timer = start_timer
+        start_timer = math.max(start_timer * .95, 1.65)
     end
 end, "render")
 

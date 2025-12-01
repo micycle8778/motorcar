@@ -114,6 +114,11 @@ function(player, camera)
         Log.debug("miss")
         return
     end
+    local distance = result.position:distance_to(gt:position())
+    if distance > 3.5 then
+        Log.debug("miss")
+        return
+    end
 
     if player.holding.food_item == "" then
         if pickup_ingredient(player, camera, result) then

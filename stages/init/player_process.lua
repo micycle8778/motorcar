@@ -188,6 +188,7 @@ function(gun, cam)
         })
         ECS.insert_component(food, "body", Body.new(AABB.new(vec3.new(0., 0., 0.), vec3.new(0.5,0.5,0.5))))
         ECS.insert_component(food, "trigger_body", {})
+        ECS.insert_component(food, "lifetime", {time = 2.0})
     end
 end, "render")
 

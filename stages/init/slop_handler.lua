@@ -2,7 +2,7 @@ ECS.register_component("slop")
 
 ECS.register_system({"slop", "global_transform", "transform", "entity"}, 
 function(slop)
-    local slop_speed = 10
+    local slop_speed = 60
     local gt = slop.global_transform
 
     if(gt:position().y <= 0) then

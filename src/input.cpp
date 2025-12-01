@@ -33,6 +33,10 @@ InputManager::InputManager(Engine& engine)
         Engine& engine = *static_cast<Engine*>(glfwGetWindowUserPointer(window));
         InputManager& us = *engine.input;
 
+        if (key < 0 || key > GLFW_KEY_LAST) {
+            return;
+        }
+
         if (action == GLFW_RELEASE) {
             us.state.keys_released_this_frame[key] = true;
         } else {

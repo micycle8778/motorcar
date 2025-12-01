@@ -34,6 +34,7 @@ ECS.register_system({ "enemy", "colliding_with", "entity" }, function(enemy)
                 Log.debug("Enemy wants: " .. enemy.enemy.wants)
                 Log.debug("Food fired: " .. ECS.get_component(e, "food_type"))
                 ECS.delete_entity(enemy.entity)
+                ECS.fire_event("enemy_served")
             end
             
         end
